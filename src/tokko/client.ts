@@ -1,38 +1,42 @@
 import { config, OPPORTUNITY_STAGES, type OpportunityStageKey } from "../config.js";
 import { logger } from "../logger.js";
-import type {
-  TokkoContact,
-  TokkoListResponse,
-  TokkoOpportunity,
-  TokkoProperty,
-  TokkoSearchFilters,
-} from "./types.js";
+import type { TokkoContact, TokkoListResponse, TokkoProperty, TokkoSearchFilters } from "./types.js";
 
 /**
  * Cliente de la API de Tokko Broker.
  *
- * `/property/` (listado) fue verificado en vivo contra una cuenta real: la
- * paginación es por query params planos (`limit`/`offset`), y los campos de
- * cada propiedad (`operations`, `photos`, `location`, `room_amount`,
- * `public_url`, etc.) están confirmados. `/property/search/` en cambio
- * exige un parámetro `data` con una forma que no pudimos determinar sin la
- * documentación de la cuenta — por eso `searchProperties` filtra en el
- * servidor Node sobre el listado, en vez de depender de `/search/`.
+ * `/property/` (listado) y `/contact/` (listado) fueron verificados en vivo
+ * contra una cuenta real: la paginación es por query params planos
+ * (`limit`/`offset`), y los campos usados por este cliente están
+ * confirmados — incluyendo que **no existe un recurso "Oportunidad"
+ * separado**: el estado del embudo vive directo en el campo
+ * `opportunity_status` (`{id, name, color, is_closed_status}`) de cada
+ * contacto, asignado por Tastypie/Tokko. `/property/search/` en cambio
+ * exige un parámetro `data` con una forma que no pudimos determinar sin
+ * documentación — por eso `searchProperties` filtra en el servidor Node
+ * sobre el listado, en vez de depender de `/search/`.
  *
- * Los de contacto/nota/oportunidad (marcados "VERIFICAR") siguen la
- * convención REST general de Tokko pero no están confirmados contra la
- * cuenta real — revisalos contra la documentación de tu cuenta antes de
- * producción. Ver docs/SETUP.md.
+ * IMPORTANTE — confirmado en vivo: la API key de esta cuenta es de **solo
+ * lectura**. PATCH y POST contra `/contact/{id}/` devuelven ambos una
+ * respuesta de error (el string "GET"), o sea que `createContact`,
+ * `updateContactStage` y `addNote` van a fallar tal como está la key hoy.
+ * Hay que pedirle a Tokko que habilite permisos de escritura en la API v1
+ * para esta cuenta (ver docs/SETUP.md). El resto del agente (búsqueda de
+ * propiedades y contactos) no se ve afectado — es todo lectura, y
+ * orchestrator.ts ya trata cualquier falla de escritura como best-effort
+ * (loguea y sigue respondiendo al cliente) para no depender de esto.
+ *
+ * Además, `addNote` sigue sin confirmar si `/contact/{id}/note/` existe
+ * como sub-recurso — no hay evidencia de que Tokko exponga notas de
+ * seguimiento por API v1, más allá del problema de permisos.
  */
 const ENDPOINTS = {
   propertyList: "/property/",
   propertyDetail: (id: number | string) => `/property/${id}/`,
-  // VERIFICAR contra la documentación de tu cuenta:
   contactList: "/contact/",
   contactDetail: (id: number | string) => `/contact/${id}/`,
+  // VERIFICAR — no confirmado contra la cuenta real:
   contactNote: (id: number | string) => `/contact/${id}/note/`,
-  opportunityList: "/opportunity/",
-  opportunityDetail: (id: number | string) => `/opportunity/${id}/`,
 };
 
 const PAGE_SIZE = 20;
@@ -90,7 +94,7 @@ class TokkoClient {
   }
 
   private async request<T>(
-    method: "GET" | "POST" | "PUT",
+    method: "GET" | "POST" | "PUT" | "PATCH",
     path: string,
     options: { params?: Record<string, string>; body?: unknown } = {},
   ): Promise<T> {
@@ -140,7 +144,7 @@ class TokkoClient {
     return this.request<TokkoProperty>("GET", ENDPOINTS.propertyDetail(id));
   }
 
-  /** VERIFICAR endpoint/campos contra tu documentación de Tokko. */
+  /** Confirmado: `/contact/` funciona igual que `/property/` (mismo listado paginado). */
   async findContactByPhone(phone: string): Promise<TokkoContact | null> {
     try {
       const result = await this.request<{ objects: TokkoContact[] }>(
@@ -155,7 +159,12 @@ class TokkoClient {
     }
   }
 
-  /** VERIFICAR endpoint/campos contra tu documentación de Tokko. */
+  /**
+   * VERIFICAR: no probado en vivo (crear un contacto es una acción con
+   * efecto real). `name` y `phone` son campos confirmados del objeto
+   * Contact, pero no confirmamos que basten como body de creación — probalo
+   * primero con un contacto de prueba bien identificable.
+   */
   async createContact(input: { name: string; phone: string }): Promise<TokkoContact> {
     return this.request<TokkoContact>("POST", ENDPOINTS.contactList, {
       body: { name: input.name, phone: input.phone },
@@ -170,59 +179,33 @@ class TokkoClient {
     return this.createContact(input);
   }
 
-  /** VERIFICAR endpoint/campos contra tu documentación de Tokko. */
+  /**
+   * VERIFICAR: en la cuenta real no encontramos evidencia de un sub-recurso
+   * de notas — puede que Tokko no lo exponga por API v1. Falla en silencio
+   * (el llamador ya lo trata como best-effort) hasta confirmar el endpoint
+   * correcto.
+   */
   async addNote(contactId: number, text: string): Promise<void> {
     await this.request("POST", ENDPOINTS.contactNote(contactId), {
       body: { text },
     });
   }
 
-  /** VERIFICAR endpoint/campos contra tu documentación de Tokko. */
-  async findOpenOpportunityForContact(contactId: number): Promise<TokkoOpportunity | null> {
-    try {
-      const result = await this.request<{ objects: TokkoOpportunity[] }>(
-        "GET",
-        ENDPOINTS.opportunityList,
-        { params: { contact: String(contactId) } },
-      );
-      return result.objects?.[0] ?? null;
-    } catch (error) {
-      logger.warn("tokko.find_opportunity_failed", { contactId, error: String(error) });
-      return null;
-    }
-  }
-
-  /** VERIFICAR endpoint/campos contra tu documentación de Tokko. */
-  async createOpportunity(contactId: number): Promise<TokkoOpportunity> {
-    return this.request<TokkoOpportunity>("POST", ENDPOINTS.opportunityList, {
-      body: { contact: contactId, status: OPPORTUNITY_STAGES.new },
-    });
-  }
-
-  /** Busca una oportunidad abierta para el contacto o crea una nueva. */
-  async ensureOpportunity(contactId: number): Promise<TokkoOpportunity> {
-    const existing = await this.findOpenOpportunityForContact(contactId);
-    if (existing) return existing;
-    logger.info("tokko.creating_opportunity", { contactId });
-    return this.createOpportunity(contactId);
-  }
-
   /**
-   * VERIFICAR: mueve la oportunidad del contacto a la etapa indicada del
-   * workflow. Requiere haber completado los IDs reales de etapa en .env
-   * (TOKKO_STAGE_*), tal como figuran en el panel de Oportunidades de Tokko.
+   * Mueve al contacto a la etapa indicada del workflow de Oportunidades,
+   * actualizando su campo `opportunity_status`. Requiere haber completado
+   * el ID real de esa etapa en .env (TOKKO_STAGE_*) — confirmados en tu
+   * cuenta: tomar_accion=344783 (estado por defecto de todo contacto
+   * nuevo), cerrado=344780. El resto hay que buscarlos (ver docs/SETUP.md).
    */
-  async updateOpportunityStage(
-    opportunityId: number,
-    stageKey: OpportunityStageKey,
-  ): Promise<void> {
+  async updateContactStage(contactId: number, stageKey: OpportunityStageKey): Promise<void> {
     const stageId = OPPORTUNITY_STAGES[stageKey];
     if (!stageId) {
       logger.warn("tokko.stage_not_configured", { stageKey });
       return;
     }
-    await this.request("PUT", ENDPOINTS.opportunityDetail(opportunityId), {
-      body: { status: stageId },
+    await this.request("PATCH", ENDPOINTS.contactDetail(contactId), {
+      body: { opportunity_status: stageId },
     });
   }
 }

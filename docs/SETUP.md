@@ -46,24 +46,43 @@ cualquier orden, pero para probar el flujo completo necesitás los tres.
    - `/property/search/` **exige** un parámetro `data`, pero no logramos
      determinar el formato exacto que espera sin la documentación de la
      cuenta — por eso el cliente no lo usa.
-   - Los de **contacto, notas y oportunidades** en `src/tokko/client.ts`
-     siguen marcados `VERIFICAR`: no los probamos contra la cuenta real
-     todavía. Si te da error al crear un contacto o mover una etapa, es la
-     primera sospecha — puede que haga falta pedirle a Tokko soporte/API el
-     endpoint correcto para tu plan.
-4. **IDs de operación** (venta/alquiler): confirmado en una cuenta real que
+   - **`/contact/`** (listado) también funciona igual — y ahí encontramos
+     que **no existe un recurso "Oportunidad" separado**: el estado del
+     embudo vive en el campo `opportunity_status` de cada contacto
+     (`{id, name, color, is_closed_status}`).
+4. **⚠️ La API key es de solo lectura — confirmado en vivo.** Probamos
+   `PATCH` y `POST` contra `/contact/{id}/` y ambos devuelven una respuesta
+   de error (el texto `GET`), o sea que con esta key **no se puede crear
+   contactos, agregar notas ni cambiar el estado de oportunidad por API**.
+   Solo funciona la lectura (buscar propiedades y contactos). El agente ya
+   está armado para tolerar esto — si la escritura falla, sigue respondiendo
+   la consulta igual y solo se salta la parte de CRM, logueando una
+   advertencia — pero para que el CRM funcione de punta a punta necesitás
+   **escribirle a tu ejecutivo de cuenta de Tokko (o a soporte) y pedirles
+   explícitamente que habiliten permisos de escritura en la API v1** para
+   crear/actualizar contactos. Volvé a probar con el mismo `curl` de abajo
+   una vez que te confirmen que lo activaron:
+   ```bash
+   curl -X PATCH "https://www.tokkobroker.com/api/v1/contact/ID_DE_UN_CONTACTO/?key=TU_API_KEY&format=json" \
+     -H "Content-Type: application/json" -d '{"opportunity_status": 344781}'
+   ```
+   Si devuelve el contacto actualizado (no el texto `GET`), ya podés
+   desmarcar esta limitación.
+5. **IDs de operación** (venta/alquiler): confirmado en una cuenta real que
    **Venta = `operation_id: 1`**. Para Alquiler, buscá en el JSON de
    `/property/` una propiedad publicada en alquiler y fijate su
    `operations[].operation_id`. Completá `TOKKO_OPERATION_ID_SALE` (podés
    usar `1` como punto de partida) y `TOKKO_OPERATION_ID_RENT` en `.env`. Si
    los dejás vacíos, la búsqueda simplemente no filtra por tipo de operación.
-5. **Etapas del workflow de Oportunidades**: entrá al panel de Oportunidades
-   en Tokko y anotá los IDs (o nombres, según cómo los use la API) de cada
-   etapa de tu embudo. Completá `TOKKO_STAGE_NEW`, `TOKKO_STAGE_CONTACTED`,
-   `TOKKO_STAGE_QUALIFIED`, `TOKKO_STAGE_VISIT_SCHEDULED`,
-   `TOKKO_STAGE_NEGOTIATION`, `TOKKO_STAGE_WON`, `TOKKO_STAGE_LOST` en
-   `.env`. Una etapa que quede vacía simplemente no se usa (el agente lo
-   loguea y sigue sin cortar la conversación).
+6. **Etapas del workflow de Oportunidades**: confirmadas en vivo contra el
+   panel de Oportunidades. Completá en `.env` (ver `.env.example` para los
+   nombres de variable): Aun no fueron Contactados, Sin Seguimiento,
+   Contactar, Primer Contacto hecho, Volver a Contactar, Evolucionando,
+   Tomar Accion (estado por defecto de todo contacto nuevo), Congelado y
+   Cerrado. Si tu cuenta tiene etapas distintas a estas, repetí el proceso:
+   entrá a un contacto de prueba en el panel, cambiale el estado, y pedí
+   `/contact/{id}/?key=...&format=json` para leer el `id` de
+   `opportunity_status` en cada paso.
 
 ## 3. Google Drive (cuenta de servicio)
 

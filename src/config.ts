@@ -14,13 +14,18 @@ const envSchema = z.object({
   TOKKO_API_BASE_URL: z.string().url().default("https://www.tokkobroker.com/api/v1"),
   TOKKO_LANG: z.string().default("es_ar"),
 
-  TOKKO_STAGE_NEW: z.string().optional(),
-  TOKKO_STAGE_CONTACTED: z.string().optional(),
-  TOKKO_STAGE_QUALIFIED: z.string().optional(),
-  TOKKO_STAGE_VISIT_SCHEDULED: z.string().optional(),
-  TOKKO_STAGE_NEGOTIATION: z.string().optional(),
-  TOKKO_STAGE_WON: z.string().optional(),
-  TOKKO_STAGE_LOST: z.string().optional(),
+  // IDs reales de "opportunity_status" en tu cuenta (Oportunidades > Configuración
+  // de oportunidades). Son específicos de cada cuenta de Tokko — hay que
+  // completarlos en .env, no acá (ver docs/SETUP.md).
+  TOKKO_STAGE_AUN_NO_CONTACTADOS: z.coerce.number().optional(),
+  TOKKO_STAGE_SIN_SEGUIMIENTO: z.coerce.number().optional(),
+  TOKKO_STAGE_CONTACTAR: z.coerce.number().optional(),
+  TOKKO_STAGE_PRIMER_CONTACTO: z.coerce.number().optional(),
+  TOKKO_STAGE_VOLVER_A_CONTACTAR: z.coerce.number().optional(),
+  TOKKO_STAGE_EVOLUCIONANDO: z.coerce.number().optional(),
+  TOKKO_STAGE_TOMAR_ACCION: z.coerce.number().optional(),
+  TOKKO_STAGE_CONGELADO: z.coerce.number().optional(),
+  TOKKO_STAGE_CERRADO: z.coerce.number().optional(),
 
   // IDs numéricos de "operation_type" en tu cuenta de Tokko (venta/alquiler).
   // Si se dejan vacíos, la búsqueda no filtra por operación.
@@ -48,17 +53,19 @@ function loadConfig() {
 
 export const config = loadConfig();
 
-// Mapea claves semánticas de etapa a los IDs reales configurados en Tokko.
-// Los IDs del workflow de oportunidades son específicos de cada cuenta de
-// Tokko: hay que completarlos en .env (ver docs/SETUP.md).
+// Mapea claves semánticas de etapa a los IDs reales de "opportunity_status"
+// configurados en Tokko. Son específicos de cada cuenta: hay que
+// completarlos en .env (ver docs/SETUP.md).
 export const OPPORTUNITY_STAGES = {
-  new: config.TOKKO_STAGE_NEW,
-  contacted: config.TOKKO_STAGE_CONTACTED,
-  qualified: config.TOKKO_STAGE_QUALIFIED,
-  visit_scheduled: config.TOKKO_STAGE_VISIT_SCHEDULED,
-  negotiation: config.TOKKO_STAGE_NEGOTIATION,
-  won: config.TOKKO_STAGE_WON,
-  lost: config.TOKKO_STAGE_LOST,
+  aun_no_contactados: config.TOKKO_STAGE_AUN_NO_CONTACTADOS,
+  sin_seguimiento: config.TOKKO_STAGE_SIN_SEGUIMIENTO,
+  contactar: config.TOKKO_STAGE_CONTACTAR,
+  primer_contacto: config.TOKKO_STAGE_PRIMER_CONTACTO,
+  volver_a_contactar: config.TOKKO_STAGE_VOLVER_A_CONTACTAR,
+  evolucionando: config.TOKKO_STAGE_EVOLUCIONANDO,
+  tomar_accion: config.TOKKO_STAGE_TOMAR_ACCION,
+  congelado: config.TOKKO_STAGE_CONGELADO,
+  cerrado: config.TOKKO_STAGE_CERRADO,
 } as const;
 
 export type OpportunityStageKey = keyof typeof OPPORTUNITY_STAGES;

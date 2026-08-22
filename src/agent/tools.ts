@@ -7,8 +7,9 @@ import { config, type OpportunityStageKey } from "../config.js";
 
 export interface AgentContext {
   customerPhone: string;
-  contactId: number;
-  opportunityId: number;
+  // null si no se pudo crear/encontrar el contacto en Tokko (ver
+  // orchestrator.ts) — las herramientas de CRM se desactivan en ese caso.
+  contactId: number | null;
 }
 
 export const agentTools: Anthropic.Tool[] = [
@@ -62,23 +63,31 @@ export const agentTools: Anthropic.Tool[] = [
   {
     name: "update_opportunity_stage",
     description:
-      "Actualiza la etapa de la oportunidad del cliente en el workflow de Tokko. Usala cuando " +
-      "la conversación deje claro un cambio real de etapa (por ejemplo: se lo contactó, calificó " +
-      "sus necesidades, agendó una visita, está negociando, o cerró/perdió el negocio).",
+      "Actualiza la etapa del contacto en el workflow de Oportunidades de Tokko. Usala cuando " +
+      "la conversación deje claro un cambio real de etapa — no la uses en cada mensaje.",
     input_schema: {
       type: "object",
       properties: {
         stage: {
           type: "string",
           enum: [
-            "new",
-            "contacted",
-            "qualified",
-            "visit_scheduled",
-            "negotiation",
-            "won",
-            "lost",
+            "aun_no_contactados",
+            "sin_seguimiento",
+            "contactar",
+            "primer_contacto",
+            "volver_a_contactar",
+            "evolucionando",
+            "tomar_accion",
+            "congelado",
+            "cerrado",
           ],
+          description:
+            "aun_no_contactados: todavía nadie lo contactó. sin_seguimiento: sin actividad " +
+            "reciente. contactar: hay que contactarlo (pendiente). primer_contacto: ya se hizo " +
+            "el primer contacto. volver_a_contactar: hay que retomar el contacto. evolucionando: " +
+            "la negociación está avanzando. tomar_accion: requiere una acción del agente humano " +
+            "(estado por defecto de contactos nuevos). congelado: en pausa por ahora. cerrado: " +
+            "el negocio se cerró o se descartó definitivamente.",
         },
         reason: { type: "string", description: "Motivo breve del cambio de etapa." },
       },
@@ -168,18 +177,19 @@ export async function executeTool(
     }
 
     case "update_opportunity_stage": {
+      if (ctx.contactId === null) {
+        return JSON.stringify({ updated: false, reason: "CRM no disponible en este momento." });
+      }
       const stage = input.stage as OpportunityStageKey;
-      await tokkoClient.updateOpportunityStage(ctx.opportunityId, stage);
-      logger.info("agent.stage_updated", {
-        contactId: ctx.contactId,
-        opportunityId: ctx.opportunityId,
-        stage,
-        reason: input.reason,
-      });
+      await tokkoClient.updateContactStage(ctx.contactId, stage);
+      logger.info("agent.stage_updated", { contactId: ctx.contactId, stage, reason: input.reason });
       return JSON.stringify({ updated: true, stage });
     }
 
     case "save_lead_notes": {
+      if (ctx.contactId === null) {
+        return JSON.stringify({ saved: false, reason: "CRM no disponible en este momento." });
+      }
       await tokkoClient.addNote(ctx.contactId, input.note as string);
       return JSON.stringify({ saved: true });
     }

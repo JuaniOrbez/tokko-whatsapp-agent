@@ -47,15 +47,18 @@ export interface TokkoSearchFilters {
   limit?: number;
 }
 
+export interface TokkoOpportunityStatus {
+  id: number;
+  name: string;
+  color?: string;
+  is_closed_status?: boolean;
+}
+
 export interface TokkoContact {
   id: number;
   name?: string;
   phone?: string;
   email?: string;
-}
-
-export interface TokkoOpportunity {
-  id: number;
-  contact?: number;
-  status?: string | number;
+  lead_status?: string;
+  opportunity_status?: TokkoOpportunityStatus;
 }

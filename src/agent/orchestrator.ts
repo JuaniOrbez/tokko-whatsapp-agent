@@ -24,9 +24,9 @@ Cuándo usar cada herramienta:
 - save_lead_notes: cuando el cliente comparta presupuesto, zona de interés,
   plazos u otra info relevante para el seguimiento comercial.
 - update_opportunity_stage: cuando el estado real de la conversación cambie
-  (fue contactado, se calificaron sus necesidades, agendó una visita, está
-  negociando, cerró o se cayó el negocio). No la uses en cada mensaje, solo
-  cuando corresponda un cambio real.
+  dentro del embudo de Oportunidades (ver el enum de la herramienta para el
+  significado de cada etapa). No la uses en cada mensaje, solo cuando
+  corresponda un cambio real.
 
 Si no tenés información suficiente para responder, pedí la información que
 falta en vez de asumir.`;
@@ -43,18 +43,22 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
   const { from, name, text } = msg;
 
   try {
-    const contact = await tokkoClient.ensureContact({ name, phone: from });
-    const opportunity = await tokkoClient.ensureOpportunity(contact.id);
+    // El CRM (crear contacto / nota / etapa) es best-effort: si la API key
+    // de Tokko no tiene permiso de escritura (o cualquier otro fallo), el
+    // bot igual tiene que poder responder la consulta con datos de solo
+    // lectura — nunca debe cortar la respuesta al cliente por esto.
+    let contactId: number | null = null;
+    try {
+      const contact = await tokkoClient.ensureContact({ name, phone: from });
+      contactId = contact.id;
+      tokkoClient.addNote(contact.id, `WhatsApp — ${name}: ${text}`).catch((error) => {
+        logger.warn("tokko.add_inbound_note_failed", { contactId: contact.id, error: String(error) });
+      });
+    } catch (error) {
+      logger.warn("tokko.ensure_contact_failed", { from, error: String(error) });
+    }
 
-    tokkoClient.addNote(contact.id, `WhatsApp — ${name}: ${text}`).catch((error) => {
-      logger.warn("tokko.add_inbound_note_failed", { contactId: contact.id, error: String(error) });
-    });
-
-    const ctx: AgentContext = {
-      customerPhone: from,
-      contactId: contact.id,
-      opportunityId: opportunity.id,
-    };
+    const ctx: AgentContext = { customerPhone: from, contactId };
 
     const messages: Anthropic.MessageParam[] = [...getHistory(from), { role: "user", content: text }];
 

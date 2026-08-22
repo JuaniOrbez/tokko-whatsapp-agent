@@ -15,9 +15,8 @@ WhatsApp Business (Meta Cloud API)
   src/whatsapp/webhook.ts  ── responde 200 rápido, procesa en background
         ▼
   src/agent/orchestrator.ts
-        ├─ tokkoClient.ensureContact()      → crea/busca el contacto en Tokko
-        ├─ tokkoClient.ensureOpportunity()  → crea/busca su oportunidad
-        ├─ tokkoClient.addNote()            → registra el mensaje entrante
+        ├─ tokkoClient.ensureContact()  → crea/busca el contacto en Tokko (best-effort)
+        ├─ tokkoClient.addNote()        → registra el mensaje entrante (best-effort)
         └─ loop agente (Claude + tools) ────┐
                                              │
    ┌─────────────────────────────────────────┘
@@ -25,39 +24,43 @@ WhatsApp Business (Meta Cloud API)
    ▼
   search_properties / get_property_details  → src/tokko/client.ts
   share_file                                 → src/drive/client.ts + WhatsApp
-  update_opportunity_stage                   → src/tokko/client.ts
+  update_opportunity_stage                   → src/tokko/client.ts (contact.opportunity_status)
   save_lead_notes                            → src/tokko/client.ts
         │
         ▼
   respuesta final → src/whatsapp/client.ts → WhatsApp
 ```
 
-Cada mensaje entrante primero asegura que exista el contacto y la
-oportunidad en Tokko (determinístico, no depende del modelo), y registra el
-mensaje como nota. Después Claude (Claude Opus 5, vía la API de Anthropic)
-conduce la conversación con acceso a herramientas para buscar propiedades,
-compartir archivos de Drive y actualizar el CRM — así decide con criterio
-cuándo mover la oportunidad de etapa o guardar un dato relevante, en vez de
-seguir reglas rígidas.
+Cada mensaje entrante primero intenta asegurar que exista el contacto en
+Tokko y registra el mensaje como nota — esto es **best-effort**: si falla
+(ver limitación de permisos más abajo), se loguea y la conversación sigue
+igual, porque lo que nunca puede fallar es responderle al cliente. Después
+Claude (Claude Opus 5, vía la API de Anthropic) conduce la conversación con
+acceso a herramientas para buscar propiedades, compartir archivos de Drive
+y actualizar el CRM — así decide con criterio cuándo mover la etapa de
+Oportunidad o guardar un dato relevante, en vez de seguir reglas rígidas.
+
+En esta cuenta de Tokko no existe un recurso "Oportunidad" separado: el
+estado del embudo vive directo en el campo `opportunity_status` de cada
+contacto.
 
 ## Antes de arrancar
 
-**Este repo es un scaffold funcional, no un integración ya probada en
-producción.** Tres piezas dependen de credenciales y datos que solo vos
-podés conseguir, y que no fue posible verificar sin acceso a internet al
-escribir este código:
+**Este repo es un scaffold verificado en vivo contra una cuenta real de
+Tokko, pero con una limitación real pendiente de resolver:**
 
-1. **WhatsApp Business Cloud API** — necesitás crear la app en Meta.
-2. **Tokko** — la búsqueda de propiedades (`/property/search/`,
-   `/property/{id}/`) usa los endpoints públicos y estables de la API de
-   Tokko. Los de **contacto, notas y oportunidades** (`src/tokko/client.ts`,
-   marcados `VERIFICAR`) siguen la convención REST general de Tokko pero
-   **hay que confirmar los nombres exactos de endpoint y campos contra la
-   documentación de tu cuenta** (con tu API key, en
-   `https://www.tokkobroker.com/api/v1/docs/` o pidiéndosela a tu ejecutivo
-   de cuenta de Tokko) antes de ir a producción.
-3. **Google Drive** — cuenta de servicio con acceso de lectura a la carpeta
-   donde están los folletos/planos.
+1. **WhatsApp Business Cloud API** — todavía no configurada, necesitás
+   crear la app en Meta (ver `docs/SETUP.md`).
+2. **Tokko** — `/property/` y `/contact/` (listados) están confirmados en
+   vivo: funcionan y traen los campos que usa este agente. **La API key
+   actual es de solo lectura** — confirmamos que `PATCH`/`POST` contra
+   `/contact/{id}/` son rechazados. Esto significa que, hasta que Tokko
+   habilite permisos de escritura para la cuenta, el agente puede **buscar
+   propiedades y contactos pero no crear/actualizar nada** (se salta esa
+   parte silenciosamente, sin afectar la respuesta al cliente). Ver
+   `docs/SETUP.md` para el paso exacto de qué pedirle a Tokko.
+3. **Google Drive** — todavía no configurada, necesitás la cuenta de
+   servicio (ver `docs/SETUP.md`).
 
 Ver la guía paso a paso en [`docs/SETUP.md`](docs/SETUP.md).
 
@@ -90,7 +93,7 @@ src/
     client.ts              enviar texto / documentos / marcar leído
     webhook.ts              verificación + recepción de mensajes
   tokko/
-    client.ts               búsqueda de propiedades, contactos, notas, oportunidades
+    client.ts               búsqueda de propiedades/contactos, notas, etapa de oportunidad
   drive/
     client.ts                búsqueda y compartido de archivos
   agent/
@@ -101,9 +104,17 @@ src/
 
 ## Limitaciones conocidas / próximos pasos
 
+- **La API key de Tokko es de solo lectura** (confirmado en vivo) — hasta
+  que se habiliten permisos de escritura, el agente no puede crear
+  contactos, agregar notas ni cambiar la etapa de oportunidad. Ver
+  `docs/SETUP.md` → sección Tokko.
+- `addNote` (`/contact/{id}/note/`) tampoco está confirmado como endpoint
+  real, más allá del problema de permisos — puede que Tokko no exponga
+  notas de seguimiento por API v1.
 - El historial de conversación vive en memoria del proceso — se pierde si el
-  servidor se reinicia. Las notas en Tokko quedan como registro durable;
-  para volumen alto conviene mover el historial a Redis o una base de datos.
+  servidor se reinicia. Las notas en Tokko (una vez que la escritura esté
+  habilitada) quedan como registro durable; para volumen alto conviene mover
+  el historial a Redis o una base de datos.
 - Solo se procesan mensajes de texto entrantes. Agregar soporte para audio
   (transcribir) o imágenes es una extensión natural si hace falta.
 - El mapeo de IDs de operación (venta/alquiler) y de etapas del workflow de
