@@ -2,25 +2,30 @@ import { config, OPPORTUNITY_STAGES, type OpportunityStageKey } from "../config.
 import { logger } from "../logger.js";
 import type {
   TokkoContact,
+  TokkoListResponse,
   TokkoOpportunity,
   TokkoProperty,
   TokkoSearchFilters,
-  TokkoSearchResponse,
 } from "./types.js";
 
 /**
  * Cliente de la API de Tokko Broker.
  *
- * Los endpoints de búsqueda/detalle de propiedades (`/property/...`) son los
- * documentados públicamente y estables. Los de contacto/nota/oportunidad
- * (marcados como "VERIFICAR") siguen la convención REST general de Tokko
- * pero hay que confirmarlos con la documentación real de tu cuenta
- * (https://www.tokkobroker.com/api/v1/docs/ con tu API key) antes de usarlos
- * en producción — no tuve acceso a internet para verificarlos al escribir
- * este scaffold. Ver docs/SETUP.md.
+ * `/property/` (listado) fue verificado en vivo contra una cuenta real: la
+ * paginación es por query params planos (`limit`/`offset`), y los campos de
+ * cada propiedad (`operations`, `photos`, `location`, `room_amount`,
+ * `public_url`, etc.) están confirmados. `/property/search/` en cambio
+ * exige un parámetro `data` con una forma que no pudimos determinar sin la
+ * documentación de la cuenta — por eso `searchProperties` filtra en el
+ * servidor Node sobre el listado, en vez de depender de `/search/`.
+ *
+ * Los de contacto/nota/oportunidad (marcados "VERIFICAR") siguen la
+ * convención REST general de Tokko pero no están confirmados contra la
+ * cuenta real — revisalos contra la documentación de tu cuenta antes de
+ * producción. Ver docs/SETUP.md.
  */
 const ENDPOINTS = {
-  propertySearch: "/property/search/",
+  propertyList: "/property/",
   propertyDetail: (id: number | string) => `/property/${id}/`,
   // VERIFICAR contra la documentación de tu cuenta:
   contactList: "/contact/",
@@ -29,6 +34,46 @@ const ENDPOINTS = {
   opportunityList: "/opportunity/",
   opportunityDetail: (id: number | string) => `/opportunity/${id}/`,
 };
+
+const PAGE_SIZE = 20;
+const MAX_PAGES_SCANNED = 5; // cota superior: hasta 100 propiedades revisadas por búsqueda
+
+function matchesFilters(property: TokkoProperty, filters: TokkoSearchFilters): boolean {
+  if (filters.operationTypes && filters.operationTypes.length > 0) {
+    const ids = property.operations?.map((o) => o.operation_id) ?? [];
+    if (!ids.some((id) => filters.operationTypes!.includes(id))) return false;
+  }
+
+  if (filters.priceFrom !== undefined || filters.priceTo !== undefined || filters.currency) {
+    const prices = (property.operations ?? []).flatMap((o) => o.prices ?? []);
+    const relevant = filters.currency ? prices.filter((p) => p.currency === filters.currency) : prices;
+    const matchesPrice = relevant.some((p) => {
+      if (filters.priceFrom !== undefined && p.price < filters.priceFrom) return false;
+      if (filters.priceTo !== undefined && p.price > filters.priceTo) return false;
+      return true;
+    });
+    if (relevant.length > 0 && !matchesPrice) return false;
+  }
+
+  if (filters.roomAmountFrom !== undefined) {
+    if ((property.room_amount ?? 0) < filters.roomAmountFrom) return false;
+  }
+
+  if (filters.location) {
+    const needle = filters.location.trim().toLowerCase();
+    const haystack = [
+      property.location?.name,
+      property.location?.full_location,
+      property.address,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (!haystack.includes(needle)) return false;
+  }
+
+  return true;
+}
 
 class TokkoClient {
   private readonly baseUrl = config.TOKKO_API_BASE_URL;
@@ -63,24 +108,34 @@ class TokkoClient {
     return (await response.json()) as T;
   }
 
+  /**
+   * Recorre el listado de propiedades (paginado) y filtra en el servidor
+   * Node por operación, precio, ambientes y ubicación. Corta apenas junta
+   * suficientes resultados o al llegar a MAX_PAGES_SCANNED.
+   */
   async searchProperties(filters: TokkoSearchFilters): Promise<TokkoProperty[]> {
-    const data: Record<string, unknown> = {
-      limit: filters.limit ?? 5,
-    };
-    if (filters.operationTypes) data.operation_types = filters.operationTypes;
-    if (filters.propertyTypes) data.property_types = filters.propertyTypes;
-    if (filters.priceFrom !== undefined) data.price_from = filters.priceFrom;
-    if (filters.priceTo !== undefined) data.price_to = filters.priceTo;
-    if (filters.currency) data.currency = filters.currency;
-    if (filters.locationId) data.location_id = filters.locationId;
-    if (filters.roomAmountFrom) data.room_amount_from = filters.roomAmountFrom;
+    const wanted = filters.limit ?? 5;
+    const matches: TokkoProperty[] = [];
 
-    const result = await this.request<TokkoSearchResponse>("GET", ENDPOINTS.propertySearch, {
-      params: { data: JSON.stringify(data) },
-    });
-    return result.objects ?? [];
+    for (let page = 0; page < MAX_PAGES_SCANNED; page++) {
+      const result = await this.request<TokkoListResponse>("GET", ENDPOINTS.propertyList, {
+        params: { limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) },
+      });
+      const objects = result.objects ?? [];
+
+      for (const property of objects) {
+        if (matchesFilters(property, filters)) matches.push(property);
+      }
+
+      const totalCount = result.meta?.total_count ?? objects.length;
+      const scanned = (page + 1) * PAGE_SIZE;
+      if (matches.length >= wanted || scanned >= totalCount || objects.length === 0) break;
+    }
+
+    return matches.slice(0, wanted);
   }
 
+  /** Sigue la misma convención que `/property/` (confirmada) pero el detalle en sí no se probó en vivo. */
   async getProperty(id: number | string): Promise<TokkoProperty> {
     return this.request<TokkoProperty>("GET", ENDPOINTS.propertyDetail(id));
   }

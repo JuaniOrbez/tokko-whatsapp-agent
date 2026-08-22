@@ -36,22 +36,27 @@ cualquier orden, pero para probar el flujo completo necesitás los tres.
 2. Buscá la sección de **API** (según el plan puede estar en Configuración
    general, o hay que pedírsela al ejecutivo de cuenta de Tokko). Ahí vas a
    encontrar tu **API Key** → `TOKKO_API_KEY`.
-3. Junto con la API key, Tokko debería darte acceso a la documentación
-   específica de tu cuenta
-   (típicamente `https://www.tokkobroker.com/api/v1/docs/?key=TU_API_KEY`).
-   **Es importante que la revises** antes de producción: este scaffold
-   implementa `/property/search/` y `/property/{id}/` con confianza (son los
-   endpoints públicos estándar), pero los de **contacto, notas y
-   oportunidades** en `src/tokko/client.ts` están marcados `VERIFICAR` — hay
-   que confirmar ahí los nombres de endpoint/campos exactos porque no tuve
-   forma de verificarlos sin acceso a internet al escribir el código.
-4. **IDs de operación** (venta/alquiler): en Tokko cada "operation_type" es
-   un ID numérico específico de tu cuenta. Para encontrarlos, lo más simple
-   es pedirle a tu ejecutivo de Tokko la lista, o hacer una búsqueda de
-   prueba sin filtro de operación y mirar el campo `operations[].operation_type`
-   de los resultados. Completá `TOKKO_OPERATION_ID_SALE` /
-   `TOKKO_OPERATION_ID_RENT` en `.env`. Si los dejás vacíos, la búsqueda
-   simplemente no filtra por tipo de operación.
+3. `https://www.tokkobroker.com/api/v1/docs/?key=TU_API_KEY` **no existe**
+   (lo probamos, da 404) — no hay documentación pública autoservicio. Lo que
+   sí verificamos en vivo contra una cuenta real:
+   - `/property/` (listado paginado) funciona y trae todos los campos que
+     usa este agente (`operations`, `photos`, `location`, `room_amount`,
+     `public_url`, etc.) — es el que usa `tokkoClient.searchProperties`,
+     filtrando en el servidor Node.
+   - `/property/search/` **exige** un parámetro `data`, pero no logramos
+     determinar el formato exacto que espera sin la documentación de la
+     cuenta — por eso el cliente no lo usa.
+   - Los de **contacto, notas y oportunidades** en `src/tokko/client.ts`
+     siguen marcados `VERIFICAR`: no los probamos contra la cuenta real
+     todavía. Si te da error al crear un contacto o mover una etapa, es la
+     primera sospecha — puede que haga falta pedirle a Tokko soporte/API el
+     endpoint correcto para tu plan.
+4. **IDs de operación** (venta/alquiler): confirmado en una cuenta real que
+   **Venta = `operation_id: 1`**. Para Alquiler, buscá en el JSON de
+   `/property/` una propiedad publicada en alquiler y fijate su
+   `operations[].operation_id`. Completá `TOKKO_OPERATION_ID_SALE` (podés
+   usar `1` como punto de partida) y `TOKKO_OPERATION_ID_RENT` en `.env`. Si
+   los dejás vacíos, la búsqueda simplemente no filtra por tipo de operación.
 5. **Etapas del workflow de Oportunidades**: entrá al panel de Oportunidades
    en Tokko y anotá los IDs (o nombres, según cómo los use la API) de cada
    etapa de tu embudo. Completá `TOKKO_STAGE_NEW`, `TOKKO_STAGE_CONTACTED`,

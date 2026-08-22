@@ -121,16 +121,16 @@ export async function executeTool(
         priceTo: input.price_max as number | undefined,
         currency: (input.currency as string | undefined) ?? "USD",
         roomAmountFrom: input.rooms_min as number | undefined,
+        location: input.location as string | undefined,
         limit: 8,
       });
 
       const summaries = properties.map((p) => ({
         id: p.id,
         title: p.publication_title,
-        type: p.type?.name,
         address: p.address ?? p.location?.name,
         rooms: p.room_amount,
-        surface_m2: p.total_surface,
+        surface_m2: p.surface,
         operations: p.operations?.map((o) => ({
           type: o.operation_type,
           prices: o.prices,
@@ -149,8 +149,8 @@ export async function executeTool(
         address: property.address ?? property.location?.name,
         rooms: property.room_amount,
         suites: property.suite_amount,
-        total_surface_m2: property.total_surface,
-        covered_surface_m2: property.covered_surface,
+        surface_m2: property.surface,
+        roofed_surface_m2: property.roofed_surface,
         operations: property.operations,
         photo_count: property.photos?.length ?? 0,
         url: property.public_url,
