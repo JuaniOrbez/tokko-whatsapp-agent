@@ -10,11 +10,20 @@ function toWhatsAppAddress(phone: string): string {
 
 export async function sendText(to: string, body: string): Promise<void> {
   logger.info("whatsapp.send_text", { to, length: body.length });
-  await client.messages.create({
-    from: config.TWILIO_WHATSAPP_FROM,
-    to: toWhatsAppAddress(to),
-    body,
-  });
+  const base = { from: config.TWILIO_WHATSAPP_FROM, to: toWhatsAppAddress(to) };
+
+  // Confirmado en vivo: WhatsApp/Twilio en este sandbox rechaza el envío de
+  // texto libre ("ContentSid Required") — hay que mandarlo a través de un
+  // Content Template con un único body "{{1}}".
+  if (config.TWILIO_CONTENT_SID) {
+    await client.messages.create({
+      ...base,
+      contentSid: config.TWILIO_CONTENT_SID,
+      contentVariables: JSON.stringify({ 1: body }),
+    });
+    return;
+  }
+  await client.messages.create({ ...base, body });
 }
 
 export async function sendDocumentByLink(

@@ -21,6 +21,11 @@ const envSchema = z.object({
     (v) => (v === "" ? undefined : v),
     z.string().url().optional(),
   ),
+  // Content Template (HX...) con un solo body "{{1}}" — WhatsApp/Twilio exige
+  // mandar los mensajes de texto a través de una plantilla en vez de body
+  // libre (confirmado en vivo: sin esto, el envío falla con "ContentSid
+  // Required"). Se crea en Twilio > Content Template Builder.
+  TWILIO_CONTENT_SID: z.string().optional(),
 
   TOKKO_API_KEY: z.string().min(1, "falta TOKKO_API_KEY"),
   TOKKO_API_BASE_URL: z.string().url().default("https://www.tokkobroker.com/api/v1"),

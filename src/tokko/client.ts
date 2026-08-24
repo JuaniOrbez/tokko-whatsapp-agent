@@ -142,19 +142,16 @@ class TokkoClient {
     return this.request<TokkoProperty>("GET", ENDPOINTS.propertyDetail(id));
   }
 
-  /** Confirmado: `/contact/` funciona igual que `/property/` (mismo listado paginado). */
-  async findContactByPhone(phone: string): Promise<TokkoContact | null> {
-    try {
-      const result = await this.request<{ objects: TokkoContact[] }>(
-        "GET",
-        ENDPOINTS.contactList,
-        { params: { phone } },
-      );
-      return result.objects?.[0] ?? null;
-    } catch (error) {
-      logger.warn("tokko.find_contact_failed", { phone, error: String(error) });
-      return null;
-    }
+  /**
+   * Confirmado en vivo: `/contact/` NO permite filtrar por `phone` — devuelve
+   * 400 "The 'phone' field does not allow filtering." Con miles de contactos
+   * en la cuenta, escanear todo el listado para buscar por teléfono no es
+   * viable. Por ahora siempre devuelve null (orchestrator.ts ya lo trata
+   * como "contacto no encontrado" y sigue con normalidad — ver
+   * submitInquiry). Si Tokko habilita un filtro real, reemplazar esto.
+   */
+  async findContactByPhone(_phone: string): Promise<TokkoContact | null> {
+    return null;
   }
 
   /**
