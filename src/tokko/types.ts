@@ -32,9 +32,24 @@ export interface TokkoProperty {
   public_url?: string;
 }
 
-export interface TokkoListResponse {
+export interface TokkoListResponse<T = TokkoProperty> {
   meta?: { limit?: number; offset?: number; total_count?: number };
-  objects: TokkoProperty[];
+  objects: T[];
+}
+
+/**
+ * Sin confirmar en vivo todavía (a diferencia de TokkoProperty/TokkoContact) —
+ * la forma exacta puede variar. Campos optativos a propósito; ajustar según
+ * lo que devuelva /development/ real.
+ */
+export interface TokkoDevelopment {
+  id: number;
+  name?: string; // nombre comercial del emprendimiento
+  address?: string;
+  location?: TokkoLocation;
+  description?: string;
+  public_url?: string;
+  photos?: TokkoPhoto[];
 }
 
 export interface TokkoSearchFilters {

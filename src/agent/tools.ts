@@ -40,6 +40,21 @@ export const agentTools: Anthropic.Tool[] = [
     },
   },
   {
+    name: "search_developments",
+    description:
+      "Busca emprendimientos (proyectos/edificios en desarrollo) por nombre comercial o " +
+      "dirección. Usala cuando el cliente pregunte por el nombre de un proyecto (ej. \"La " +
+      "Vecindad\", \"Torres del Parque\") en vez de una zona genérica — así confirmás el nombre " +
+      "comercial real antes de decir que no figura en el sistema.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Nombre del emprendimiento o parte de la dirección." },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "get_property_details",
     description: "Trae el detalle completo (descripción, fotos, superficie) de una propiedad por ID.",
     input_schema: {
@@ -152,6 +167,17 @@ export async function executeTool(
         url: p.public_url,
       }));
       return JSON.stringify({ count: summaries.length, properties: summaries });
+    }
+
+    case "search_developments": {
+      const developments = await tokkoClient.searchDevelopments(input.query as string);
+      const summaries = developments.map((d) => ({
+        id: d.id,
+        name: d.name,
+        address: d.address ?? d.location?.name,
+        url: d.public_url,
+      }));
+      return JSON.stringify({ count: summaries.length, developments: summaries });
     }
 
     case "get_property_details": {

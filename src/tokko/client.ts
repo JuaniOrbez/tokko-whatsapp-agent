@@ -1,6 +1,12 @@
 import { config, OPPORTUNITY_STAGES, type OpportunityStageKey } from "../config.js";
 import { logger } from "../logger.js";
-import type { TokkoContact, TokkoListResponse, TokkoProperty, TokkoSearchFilters } from "./types.js";
+import type {
+  TokkoContact,
+  TokkoDevelopment,
+  TokkoListResponse,
+  TokkoProperty,
+  TokkoSearchFilters,
+} from "./types.js";
 
 /**
  * Cliente de la API de Tokko Broker.
@@ -34,6 +40,8 @@ const ENDPOINTS = {
   contactList: "/contact/",
   contactDetail: (id: number | string) => `/contact/${id}/`,
   webContact: "/webcontact/",
+  developmentList: "/development/",
+  developmentDetail: (id: number | string) => `/development/${id}/`,
 };
 
 const PAGE_SIZE = 20;
@@ -140,6 +148,40 @@ class TokkoClient {
   /** Sigue la misma convención que `/property/` (confirmada) pero el detalle en sí no se probó en vivo. */
   async getProperty(id: number | string): Promise<TokkoProperty> {
     return this.request<TokkoProperty>("GET", ENDPOINTS.propertyDetail(id));
+  }
+
+  /**
+   * Busca emprendimientos por nombre comercial o dirección. Sigue la misma
+   * convención de listado paginado que `/property/`, pero `/development/`
+   * en sí no está confirmado en vivo todavía — probar y ajustar
+   * TokkoDevelopment en types.ts si los campos reales difieren.
+   */
+  async searchDevelopments(query: string, limit = 5): Promise<TokkoDevelopment[]> {
+    const needle = query.trim().toLowerCase();
+    const matches: TokkoDevelopment[] = [];
+
+    for (let page = 0; page < MAX_PAGES_SCANNED; page++) {
+      const result = await this.request<TokkoListResponse<TokkoDevelopment>>(
+        "GET",
+        ENDPOINTS.developmentList,
+        { params: { limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) } },
+      );
+      const objects = result.objects ?? [];
+
+      for (const development of objects) {
+        const haystack = [development.name, development.address, development.location?.name]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (haystack.includes(needle)) matches.push(development);
+      }
+
+      const totalCount = result.meta?.total_count ?? objects.length;
+      const scanned = (page + 1) * PAGE_SIZE;
+      if (matches.length >= limit || scanned >= totalCount || objects.length === 0) break;
+    }
+
+    return matches.slice(0, limit);
   }
 
   /**
