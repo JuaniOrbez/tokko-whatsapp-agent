@@ -7,8 +7,11 @@ import { config, type OpportunityStageKey } from "../config.js";
 
 export interface AgentContext {
   customerPhone: string;
-  // null si no se pudo crear/encontrar el contacto en Tokko (ver
-  // orchestrator.ts) — las herramientas de CRM se desactivan en ese caso.
+  customerName: string;
+  // id real solo si el contacto YA existía en Tokko (encontrado por
+  // teléfono). Un contacto nuevo no tiene id todavía: queda como "Consulta"
+  // pendiente de aprobación manual en Tokko (ver orchestrator.ts) — en ese
+  // caso update_opportunity_stage no tiene nada sobre lo cual actuar.
   contactId: number | null;
 }
 
@@ -97,8 +100,10 @@ export const agentTools: Anthropic.Tool[] = [
   {
     name: "save_lead_notes",
     description:
-      "Guarda una nota breve en la ficha del contacto en Tokko con información relevante " +
-      "detectada en la charla (presupuesto, preferencias, disponibilidad, etc.).",
+      "Deja registrado en Tokko (como una nueva Consulta pendiente de revisión) un dato " +
+      "relevante detectado en la charla (presupuesto, preferencias, disponibilidad, etc.). " +
+      "No la uses para cada mensaje — solo cuando el cliente comparta algo con valor comercial " +
+      "real que valga la pena que el agente humano vea al revisar la consulta.",
     input_schema: {
       type: "object",
       properties: {
@@ -178,7 +183,10 @@ export async function executeTool(
 
     case "update_opportunity_stage": {
       if (ctx.contactId === null) {
-        return JSON.stringify({ updated: false, reason: "CRM no disponible en este momento." });
+        return JSON.stringify({
+          updated: false,
+          reason: "Todavía no hay un contacto confirmado en Tokko (la consulta está pendiente de aprobación).",
+        });
       }
       const stage = input.stage as OpportunityStageKey;
       await tokkoClient.updateContactStage(ctx.contactId, stage);
@@ -187,11 +195,13 @@ export async function executeTool(
     }
 
     case "save_lead_notes": {
-      if (ctx.contactId === null) {
-        return JSON.stringify({ saved: false, reason: "CRM no disponible en este momento." });
-      }
-      await tokkoClient.addNote(ctx.contactId, input.note as string);
-      return JSON.stringify({ saved: true });
+      await tokkoClient.submitInquiry({
+        name: ctx.customerName,
+        phone: ctx.customerPhone,
+        text: input.note as string,
+        tags: ["WhatsApp", "Seguimiento"],
+      });
+      return JSON.stringify({ saved: true, note: "Quedó como una nueva consulta pendiente en Tokko." });
     }
 
     default:

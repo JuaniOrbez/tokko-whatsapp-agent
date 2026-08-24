@@ -50,24 +50,34 @@ cualquier orden, pero para probar el flujo completo necesitás los tres.
      que **no existe un recurso "Oportunidad" separado**: el estado del
      embudo vive en el campo `opportunity_status` de cada contacto
      (`{id, name, color, is_closed_status}`).
-4. **⚠️ La API key es de solo lectura — confirmado en vivo.** Probamos
-   `PATCH` y `POST` contra `/contact/{id}/` y ambos devuelven una respuesta
-   de error (el texto `GET`), o sea que con esta key **no se puede crear
-   contactos, agregar notas ni cambiar el estado de oportunidad por API**.
-   Solo funciona la lectura (buscar propiedades y contactos). El agente ya
-   está armado para tolerar esto — si la escritura falla, sigue respondiendo
-   la consulta igual y solo se salta la parte de CRM, logueando una
-   advertencia — pero para que el CRM funcione de punta a punta necesitás
-   **escribirle a tu ejecutivo de cuenta de Tokko (o a soporte) y pedirles
-   explícitamente que habiliten permisos de escritura en la API v1** para
-   crear/actualizar contactos. Volvé a probar con el mismo `curl` de abajo
-   una vez que te confirmen que lo activaron:
-   ```bash
-   curl -X PATCH "https://www.tokkobroker.com/api/v1/contact/ID_DE_UN_CONTACTO/?key=TU_API_KEY&format=json" \
-     -H "Content-Type: application/json" -d '{"opportunity_status": 344781}'
-   ```
-   Si devuelve el contacto actualizado (no el texto `GET`), ya podés
-   desmarcar esta limitación.
+4. **Escritura — dos mecanismos distintos, confirmados en vivo:**
+   - `POST /webcontact/` (documentado en
+     [developers.tokkobroker.com](https://developers.tokkobroker.com), guía
+     "Formulario de contacto") **funciona** — devuelve `201`. Es el mismo
+     endpoint que usan los portales chicos/sitios propios para cargar
+     leads. Body: `{name, phone, text, tags, properties?, developments?}`.
+     Pero **no crea un Contacto**: crea una "Consulta" que aparece en el
+     panel en **Consultas → Pendientes**, y hay que aprobarla a mano con el
+     botón "Crear un nuevo contacto" — no existe forma de saltear ese paso
+     por API. Es así para cualquier origen sin integración privilegiada
+     (Zonaprop sí tiene una integración propia más profunda que crea el
+     contacto directo — no está disponible para integraciones custom).
+   - `PATCH`/`POST` directo contra `/contact/{id}/` (para notas o cambiar
+     `opportunity_status` de un contacto ya existente) **está bloqueado**:
+     devuelve el texto plano `GET` en vez de JSON. Parece un firewall/CDN
+     delante de `www.tokkobroker.com` que solo deja pasar `GET` en esa
+     ruta — no es (solo) un tema de permisos de la key, porque el mismo
+     bloqueo aparece tanto en `/contact/{id}/` como en `POST /contact/`
+     (creación directa), mientras que `/webcontact/` sí pasa. Si en algún
+     momento Tokko habilita esto, `updateContactStage` en
+     `src/tokko/client.ts` ya está listo para funcionar sin cambios — probá
+     con:
+     ```bash
+     curl -i -X PATCH "https://www.tokkobroker.com/api/v1/contact/ID_DE_UN_CONTACTO/?key=TU_API_KEY&format=json" \
+       -H "Content-Type: application/json" -d '{"opportunity_status": 344781}'
+     ```
+     Si el `HTTP/2` de la respuesta ya no es `201`/`GET` como body sino el
+     contacto actualizado, avisale a quien mantenga este repo.
 5. **IDs de operación** (venta/alquiler): confirmado en una cuenta real que
    **Venta = `operation_id: 1`**. Para Alquiler, buscá en el JSON de
    `/property/` una propiedad publicada en alquiler y fijate su

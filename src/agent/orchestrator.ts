@@ -4,7 +4,12 @@ import { logger } from "../logger.js";
 import { tokkoClient } from "../tokko/client.js";
 import { sendText } from "../whatsapp/client.js";
 import { agentTools, executeTool, type AgentContext } from "./tools.js";
-import { getHistory, saveHistory } from "./sessionStore.js";
+import {
+  getHistory,
+  saveHistory,
+  hasSubmittedInquiry,
+  markInquirySubmitted,
+} from "./sessionStore.js";
 
 const anthropic = new Anthropic(); // toma ANTHROPIC_API_KEY del entorno
 
@@ -22,11 +27,14 @@ Cuándo usar cada herramienta:
 - share_file: cuando pidan fotos, planos, folleto o ficha de una propiedad
   y exista un archivo relacionado en Drive.
 - save_lead_notes: cuando el cliente comparta presupuesto, zona de interés,
-  plazos u otra info relevante para el seguimiento comercial.
+  plazos u otra info con valor comercial real — queda como una consulta
+  nueva pendiente de revisión en Tokko, así que no la uses para cada
+  mensaje.
 - update_opportunity_stage: cuando el estado real de la conversación cambie
   dentro del embudo de Oportunidades (ver el enum de la herramienta para el
-  significado de cada etapa). No la uses en cada mensaje, solo cuando
-  corresponda un cambio real.
+  significado de cada etapa). Puede no tener efecto si el contacto todavía
+  no fue aprobado del lado humano — no pasa nada si falla, seguí la
+  conversación con normalidad.
 
 Si no tenés información suficiente para responder, pedí la información que
 falta en vez de asumir.`;
@@ -43,22 +51,27 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
   const { from, name, text } = msg;
 
   try {
-    // El CRM (crear contacto / nota / etapa) es best-effort: si la API key
-    // de Tokko no tiene permiso de escritura (o cualquier otro fallo), el
-    // bot igual tiene que poder responder la consulta con datos de solo
-    // lectura — nunca debe cortar la respuesta al cliente por esto.
+    // El CRM es best-effort: si algo falla del lado de Tokko, el bot igual
+    // tiene que poder responder la consulta con datos de solo lectura —
+    // nunca debe cortar la respuesta al cliente por esto.
     let contactId: number | null = null;
     try {
-      const contact = await tokkoClient.ensureContact({ name, phone: from });
-      contactId = contact.id;
-      tokkoClient.addNote(contact.id, `WhatsApp — ${name}: ${text}`).catch((error) => {
-        logger.warn("tokko.add_inbound_note_failed", { contactId: contact.id, error: String(error) });
-      });
+      const existing = await tokkoClient.findContactByPhone(from);
+      if (existing) {
+        contactId = existing.id;
+      } else if (!hasSubmittedInquiry(from)) {
+        // Contacto nuevo: manda la consulta a Tokko (queda pendiente de
+        // aprobación manual — no hay forma de saltear ese paso por API,
+        // ver src/tokko/client.ts). Solo una vez por número mientras el
+        // proceso siga corriendo, para no inundar la bandeja de Pendientes.
+        await tokkoClient.submitInquiry({ name, phone: from, text, tags: ["WhatsApp"] });
+        markInquirySubmitted(from);
+      }
     } catch (error) {
-      logger.warn("tokko.ensure_contact_failed", { from, error: String(error) });
+      logger.warn("tokko.crm_sync_failed", { from, error: String(error) });
     }
 
-    const ctx: AgentContext = { customerPhone: from, contactId };
+    const ctx: AgentContext = { customerPhone: from, customerName: name, contactId };
 
     const messages: Anthropic.MessageParam[] = [...getHistory(from), { role: "user", content: text }];
 

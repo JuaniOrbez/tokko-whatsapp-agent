@@ -5,38 +5,35 @@ import type { TokkoContact, TokkoListResponse, TokkoProperty, TokkoSearchFilters
 /**
  * Cliente de la API de Tokko Broker.
  *
- * `/property/` (listado) y `/contact/` (listado) fueron verificados en vivo
- * contra una cuenta real: la paginación es por query params planos
- * (`limit`/`offset`), y los campos usados por este cliente están
- * confirmados — incluyendo que **no existe un recurso "Oportunidad"
- * separado**: el estado del embudo vive directo en el campo
- * `opportunity_status` (`{id, name, color, is_closed_status}`) de cada
- * contacto, asignado por Tastypie/Tokko. `/property/search/` en cambio
- * exige un parámetro `data` con una forma que no pudimos determinar sin
- * documentación — por eso `searchProperties` filtra en el servidor Node
- * sobre el listado, en vez de depender de `/search/`.
+ * Confirmado en vivo contra una cuenta real (ismo Propiedades):
  *
- * IMPORTANTE — confirmado en vivo: la API key de esta cuenta es de **solo
- * lectura**. PATCH y POST contra `/contact/{id}/` devuelven ambos una
- * respuesta de error (el string "GET"), o sea que `createContact`,
- * `updateContactStage` y `addNote` van a fallar tal como está la key hoy.
- * Hay que pedirle a Tokko que habilite permisos de escritura en la API v1
- * para esta cuenta (ver docs/SETUP.md). El resto del agente (búsqueda de
- * propiedades y contactos) no se ve afectado — es todo lectura, y
- * orchestrator.ts ya trata cualquier falla de escritura como best-effort
- * (loguea y sigue respondiendo al cliente) para no depender de esto.
- *
- * Además, `addNote` sigue sin confirmar si `/contact/{id}/note/` existe
- * como sub-recurso — no hay evidencia de que Tokko exponga notas de
- * seguimiento por API v1, más allá del problema de permisos.
+ * - `/property/` y `/contact/` (listados, GET) funcionan igual: paginación
+ *   por query params planos (`limit`/`offset`). No existe un recurso
+ *   "Oportunidad" separado — el estado del embudo vive en el campo
+ *   `opportunity_status` (`{id, name, color, is_closed_status}`) de cada
+ *   contacto. `/property/search/` exige un `data` cuyo formato no logramos
+ *   determinar, por eso `searchProperties` filtra en el servidor Node sobre
+ *   el listado de `/property/`.
+ * - **Escribir directo sobre `/contact/{id}/` está bloqueado**: PATCH y
+ *   POST devuelven el texto plano "GET" (parece un firewall/CDN delante de
+ *   www.tokkobroker.com que solo deja pasar GET en esa ruta). Por eso
+ *   `updateContactStage` va a seguir fallando hasta que Tokko habilite
+ *   escritura ahí — lo dejamos igual por si lo habilitan más adelante, pero
+ *   no confíes en que funcione hoy.
+ * - **`POST /webcontact/` sí funciona** (devuelve 201) — es el endpoint que
+ *   usan los portales externos (Zonaprop, etc.) para cargar leads. OJO: no
+ *   crea un Contacto directamente, crea una "Consulta" en la bandeja
+ *   Consultas → Pendientes de Tokko, que un humano tiene que convertir a
+ *   mano en Contacto (con el botón "Crear un nuevo contacto") — no hay
+ *   forma de saltear ese paso por API. Cada llamada crea una consulta
+ *   nueva, no actualiza una existente.
  */
 const ENDPOINTS = {
   propertyList: "/property/",
   propertyDetail: (id: number | string) => `/property/${id}/`,
   contactList: "/contact/",
   contactDetail: (id: number | string) => `/contact/${id}/`,
-  // VERIFICAR — no confirmado contra la cuenta real:
-  contactNote: (id: number | string) => `/contact/${id}/note/`,
+  webContact: "/webcontact/",
 };
 
 const PAGE_SIZE = 20;
@@ -105,11 +102,12 @@ class TokkoClient {
       body: options.body ? JSON.stringify(options.body) : undefined,
     });
 
+    const text = await response.text();
     if (!response.ok) {
-      const text = await response.text();
       throw new Error(`Tokko API error ${response.status} (${method} ${path}): ${text}`);
     }
-    return (await response.json()) as T;
+    // Algunos endpoints (ej. POST /webcontact/) responden 201 con body vacío.
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 
   /**
@@ -160,34 +158,25 @@ class TokkoClient {
   }
 
   /**
-   * VERIFICAR: no probado en vivo (crear un contacto es una acción con
-   * efecto real). `name` y `phone` son campos confirmados del objeto
-   * Contact, pero no confirmamos que basten como body de creación — probalo
-   * primero con un contacto de prueba bien identificable.
+   * Confirmado en vivo (POST → 201): manda una "Consulta" nueva a la
+   * bandeja Consultas → Pendientes de Tokko para que la aprueben a mano —
+   * no crea un Contacto directamente ni devuelve un ID usable. `tags` es
+   * como Tokko identifica el origen (ver "Origen de contacto" en la ficha
+   * de un contacto ya convertido).
    */
-  async createContact(input: { name: string; phone: string }): Promise<TokkoContact> {
-    return this.request<TokkoContact>("POST", ENDPOINTS.contactList, {
-      body: { name: input.name, phone: input.phone },
-    });
-  }
-
-  /** Busca el contacto por teléfono o lo crea si no existe. */
-  async ensureContact(input: { name: string; phone: string }): Promise<TokkoContact> {
-    const existing = await this.findContactByPhone(input.phone);
-    if (existing) return existing;
-    logger.info("tokko.creating_contact", { phone: input.phone });
-    return this.createContact(input);
-  }
-
-  /**
-   * VERIFICAR: en la cuenta real no encontramos evidencia de un sub-recurso
-   * de notas — puede que Tokko no lo exponga por API v1. Falla en silencio
-   * (el llamador ya lo trata como best-effort) hasta confirmar el endpoint
-   * correcto.
-   */
-  async addNote(contactId: number, text: string): Promise<void> {
-    await this.request("POST", ENDPOINTS.contactNote(contactId), {
-      body: { text },
+  async submitInquiry(input: {
+    name: string;
+    phone: string;
+    text: string;
+    tags?: string[];
+  }): Promise<void> {
+    await this.request("POST", ENDPOINTS.webContact, {
+      body: {
+        name: input.name,
+        phone: input.phone,
+        text: input.text,
+        tags: input.tags ?? ["WhatsApp"],
+      },
     });
   }
 
@@ -197,6 +186,8 @@ class TokkoClient {
    * el ID real de esa etapa en .env (TOKKO_STAGE_*) — confirmados en tu
    * cuenta: tomar_accion=344783 (estado por defecto de todo contacto
    * nuevo), cerrado=344780. El resto hay que buscarlos (ver docs/SETUP.md).
+   * NO FUNCIONA hoy (ver comentario arriba del archivo) — queda por si
+   * Tokko habilita escritura sobre /contact/{id}/ más adelante.
    */
   async updateContactStage(contactId: number, stageKey: OpportunityStageKey): Promise<void> {
     const stageId = OPPORTUNITY_STAGES[stageKey];
