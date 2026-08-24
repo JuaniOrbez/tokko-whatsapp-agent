@@ -121,11 +121,17 @@ class TokkoClient {
   /**
    * Recorre el listado de propiedades (paginado) y filtra en el servidor
    * Node por operación, precio, ambientes y ubicación. Corta apenas junta
-   * suficientes resultados o al llegar a MAX_PAGES_SCANNED.
+   * suficientes resultados o al llegar a MAX_PAGES_SCANNED — por eso
+   * `matchedAtLeast` puede ser menor al total real si `exhausted` da false
+   * (todavía puede haber más sin escanear). Nunca inventar un total exacto
+   * a partir de esto cuando `exhausted` es false.
    */
-  async searchProperties(filters: TokkoSearchFilters): Promise<TokkoProperty[]> {
+  async searchProperties(
+    filters: TokkoSearchFilters,
+  ): Promise<{ items: TokkoProperty[]; matchedAtLeast: number; exhausted: boolean }> {
     const wanted = filters.limit ?? 5;
     const matches: TokkoProperty[] = [];
+    let exhausted = false;
 
     for (let page = 0; page < MAX_PAGES_SCANNED; page++) {
       const result = await this.request<TokkoListResponse>("GET", ENDPOINTS.propertyList, {
@@ -139,10 +145,14 @@ class TokkoClient {
 
       const totalCount = result.meta?.total_count ?? objects.length;
       const scanned = (page + 1) * PAGE_SIZE;
-      if (matches.length >= wanted || scanned >= totalCount || objects.length === 0) break;
+      if (scanned >= totalCount || objects.length === 0) {
+        exhausted = true;
+        break;
+      }
+      if (matches.length >= wanted) break;
     }
 
-    return matches.slice(0, wanted);
+    return { items: matches.slice(0, wanted), matchedAtLeast: matches.length, exhausted };
   }
 
   /** Sigue la misma convención que `/property/` (confirmada) pero el detalle en sí no se probó en vivo. */

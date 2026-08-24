@@ -144,7 +144,7 @@ export async function executeTool(
             ? config.TOKKO_OPERATION_ID_RENT
             : undefined;
 
-      const properties = await tokkoClient.searchProperties({
+      const { items, matchedAtLeast, exhausted } = await tokkoClient.searchProperties({
         operationTypes: operationId ? [operationId] : undefined,
         priceFrom: input.price_min as number | undefined,
         priceTo: input.price_max as number | undefined,
@@ -154,7 +154,7 @@ export async function executeTool(
         limit: 8,
       });
 
-      const summaries = properties.map((p) => ({
+      const summaries = items.map((p) => ({
         id: p.id,
         title: p.publication_title,
         address: p.address ?? p.location?.name,
@@ -166,7 +166,15 @@ export async function executeTool(
         })),
         url: p.public_url,
       }));
-      return JSON.stringify({ count: summaries.length, properties: summaries });
+      return JSON.stringify({
+        properties: summaries,
+        // exhausted=true: shown_count es el total real. exhausted=false:
+        // hay AL MENOS matched_at_least, puede haber más — no lo trates
+        // como un total exacto ni lo repitas como si lo fuera.
+        shown_count: summaries.length,
+        matched_at_least: matchedAtLeast,
+        total_is_exact: exhausted,
+      });
     }
 
     case "search_developments": {

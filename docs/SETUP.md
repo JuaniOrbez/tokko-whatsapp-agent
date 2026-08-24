@@ -49,6 +49,30 @@ El sandbox tiene límites (hay que re-unirse cada tanto, mensajes con un
 watermark, compartido con otros desarrolladores) — sirve solo para probar,
 no para producción real.
 
+### ⚠️ Cuenta Trial: no manda mensajes salientes — confirmado en vivo
+
+Con la cuenta de Twilio en modo **Trial**, cualquier intento de mandar un
+mensaje (con o sin Content Template) falla:
+
+- Sin plantilla: `21654 "ContentSid Required"`.
+- Con una plantilla propia (creada en Content Template Builder): `21655
+  "The ContentSid is Invalid"` — y someterla a aprobación de WhatsApp pide
+  un WhatsApp Sender real (verificación de negocio de Meta, justo lo que
+  el sandbox debería evitar).
+- Pegándole directo a `content.twilio.com` (Content API): `20003 "This
+  feature is not available on a Trial account."`
+
+La solución fue **sacar la cuenta de Trial** (Consola → botón "Upgrade",
+cargar tarjeta, mínimo ~USD 20). Una vez "Active", el envío de texto libre
+(`Body`, sin `ContentSid`) funcionó normalmente — no hizo falta la
+plantilla para nada. Si al recibir el 21654 la respuesta de Twilio incluye
+además "Primary compliance profile is not approved", esperá un minuto: el
+perfil de Trust Hub (Consola → Trust Hub → Profiles) se aprueba solo al
+completar el upgrade, y una vez en estado "Approved" el envío empieza a
+andar. Este repo ya no depende de la plantilla (`TWILIO_CONTENT_SID` queda
+vacío en `.env`), pero el código en `src/whatsapp/client.ts` la sigue
+soportando por si alguna cuenta la vuelve a necesitar.
+
 ### Producción (más adelante)
 
 Cuando el agente ya esté probado y se decida qué número usar: en la
