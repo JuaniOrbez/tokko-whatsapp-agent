@@ -11,7 +11,7 @@ replicable desde la API pública).
 ## Cómo funciona
 
 ```
-WhatsApp Business (Meta Cloud API)
+WhatsApp Business (vía Twilio)
         │  webhook (mensaje entrante)
         ▼
   src/whatsapp/webhook.ts  ── responde 200 rápido, procesa en background
@@ -72,8 +72,10 @@ Verificado en vivo contra una cuenta real (no es un supuesto):
 
 ## Antes de arrancar
 
-1. **WhatsApp Business Cloud API** — todavía no configurada, necesitás
-   crear la app en Meta (ver `docs/SETUP.md`).
+1. **WhatsApp vía Twilio** — se eligió Twilio en vez de conectar directo
+   con Meta porque la verificación por SMS de Meta for Developers no le
+   estaba entregando código a números argentinos (probado con dos números).
+   Falta activar el sandbox de Twilio para probar (ver `docs/SETUP.md`).
 2. **Tokko** — ver la sección de arriba. La API key ya está probada y
    funcionando para lectura y para crear consultas nuevas.
 3. **Google Drive** — todavía no configurada, necesitás la cuenta de

@@ -3,32 +3,59 @@
 Los tres servicios se configuran de forma independiente. Podés hacerlos en
 cualquier orden, pero para probar el flujo completo necesitás los tres.
 
-## 1. WhatsApp Business Cloud API (Meta)
+## 1. WhatsApp vía Twilio
 
-1. Entrá a [developers.facebook.com](https://developers.facebook.com) con la
-   cuenta de Facebook/Meta de la empresa y creá una **app de tipo "Business"**.
-2. Agregá el producto **WhatsApp** a la app.
-3. En **WhatsApp > API Setup** vas a encontrar:
-   - Un **número de teléfono de prueba** (para desarrollo, gratis, con
-     destinatarios limitados a números que agregues a la lista de prueba), o
-     tu propio número de WhatsApp Business verificado para producción.
-   - El **Phone Number ID** → va en `WHATSAPP_PHONE_NUMBER_ID`.
-   - Un **token de acceso temporal** (24hs, para probar) o generá uno
-     permanente creando un **System User** en Business Settings con permiso
-     `whatsapp_business_messaging` → va en `WHATSAPP_ACCESS_TOKEN`.
-4. Inventá un valor cualquiera (una contraseña larga) para
-   `WHATSAPP_VERIFY_TOKEN` — lo vas a pegar en dos lugares: acá y en la
-   configuración del webhook en el paso siguiente.
-5. En **WhatsApp > Configuration**, configurá el **Webhook**:
-   - URL: `https://tu-dominio-publico/webhook`
-   - Verify token: el mismo valor de `WHATSAPP_VERIFY_TOKEN`.
-   - Suscribite al campo `messages`.
-6. (Recomendado) En **App Settings > Basic**, copiá el **App Secret** →
-   `WHATSAPP_APP_SECRET`, así el servidor valida que los webhooks realmente
-   vienen de Meta.
-7. Para producción necesitás pasar por la verificación de negocio de Meta
-   (Business Verification) y usar un token permanente — el token temporal
-   de prueba expira a las 24hs.
+Se eligió Twilio en vez de conectar directo con Meta porque el paso de
+verificación por SMS de Meta for Developers no estaba entregando código a
+números argentinos (probado con dos números distintos, sin éxito) — es un
+problema conocido de disponibilidad de Meta, no algo del lado del usuario.
+El código quedó armado contra la API de Twilio (paquete `twilio` de npm);
+si en el futuro se resuelve el problema de Meta y se quiere conectar
+directo, hay que reescribir `src/whatsapp/client.ts` y `webhook.ts` contra
+la Cloud API de Meta (quedó como referencia una versión anterior en el
+historial de git de este repo).
+
+**Importante — mismo número, un solo lugar a la vez:** un número de
+WhatsApp solo puede estar conectado a *una* cosa: o a la app normal de
+WhatsApp/WhatsApp Business (para chatear a mano desde el celular), o a la
+WhatsApp Business Platform (la API — vía Twilio, Meta directo, o cualquier
+otro proveedor). No se puede tener las dos cosas a la vez con el mismo
+número, y esto es una regla de WhatsApp, no de Twilio. Por eso para probar
+usamos el **sandbox** de Twilio (un número compartido, sin tocar ningún
+número real) — la decisión de qué número usar en producción (uno nuevo
+dedicado al bot, o migrar el actual) se toma después, con el agente ya
+funcionando como demostración.
+
+### Sandbox (para probar ahora, sin compromiso)
+
+1. Registrate en [twilio.com/try-twilio](https://www.twilio.com/try-twilio).
+2. En la consola, andá a **Messaging → Try it out → Send a WhatsApp
+   message** (o buscá "WhatsApp Sandbox").
+3. Desde tu WhatsApp personal, mandale al número del sandbox el mensaje
+   `join <palabra-clave>` que te indique la consola — así tu número queda
+   habilitado para probar contra el sandbox.
+4. En el dashboard principal de la consola, copiá el **Account SID** y el
+   **Auth Token** → `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN`.
+5. El número del sandbox (con formato `whatsapp:+1...`) → `TWILIO_WHATSAPP_FROM`.
+6. En la config del sandbox ("Sandbox Settings"), en **"When a message
+   comes in"** pegá la URL pública de tu servidor + `/webhook`
+   (`https://tu-dominio/webhook`) con método `POST`. Esa misma URL va en
+   `PUBLIC_WEBHOOK_URL` del `.env` (Twilio la necesita para validar la
+   firma `X-Twilio-Signature`).
+7. Para local, exponé el puerto con un túnel (ngrok, cloudflared) y usá esa
+   URL pública tanto en Twilio como en `PUBLIC_WEBHOOK_URL`.
+
+El sandbox tiene límites (hay que re-unirse cada tanto, mensajes con un
+watermark, compartido con otros desarrolladores) — sirve solo para probar,
+no para producción real.
+
+### Producción (más adelante)
+
+Cuando el agente ya esté probado y se decida qué número usar: en la
+consola de Twilio, **Messaging → Senders → WhatsApp senders**, se solicita
+un número de WhatsApp productivo (uno nuevo comprado en Twilio, o migrando
+uno existente — proceso guiado por Twilio, incluye verificación de negocio
+de Meta). Ahí se actualiza `TWILIO_WHATSAPP_FROM` con el número real.
 
 ## 2. Tokko Broker
 

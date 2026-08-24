@@ -1,14 +1,12 @@
-import crypto from "node:crypto";
-import { Router, type Request, type Response } from "express";
+import twilio from "twilio";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
-import { markAsRead } from "./client.js";
-import type { WhatsAppWebhookPayload } from "./types.js";
 import { handleIncomingMessage } from "../agent/orchestrator.js";
 
 export const webhookRouter = Router();
 
-// Meta reintenta la entrega si no respondemos rápido; guardamos los IDs de
+// Twilio reintenta la entrega si no respondemos rápido; guardamos los IDs de
 // mensaje ya procesados un rato para no duplicar respuestas/acciones en Tokko.
 const processedMessageIds = new Map<string, number>();
 const DEDUPE_WINDOW_MS = 10 * 60 * 1000;
@@ -23,75 +21,51 @@ function alreadyProcessed(messageId: string): boolean {
   return false;
 }
 
-function isValidSignature(req: Request): boolean {
-  if (!config.WHATSAPP_APP_SECRET) return true; // firma no configurada: se omite la validación
-  const signature = req.header("x-hub-signature-256");
-  const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
-  if (!signature || !rawBody) return false;
-
-  const expected =
-    "sha256=" +
-    crypto.createHmac("sha256", config.WHATSAPP_APP_SECRET).update(rawBody).digest("hex");
-
-  const a = Buffer.from(signature);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
-// Meta llama a esto una vez, al configurar el webhook en el panel de la app.
-webhookRouter.get("/webhook", (req: Request, res: Response) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-
-  if (mode === "subscribe" && token === config.WHATSAPP_VERIFY_TOKEN) {
-    logger.info("whatsapp.webhook_verified");
-    res.status(200).send(challenge);
+function validateTwilioSignature(req: Request, res: Response, next: NextFunction): void {
+  if (!config.TWILIO_VALIDATE_SIGNATURE) {
+    next();
     return;
   }
-  res.sendStatus(403);
-});
+  if (!config.PUBLIC_WEBHOOK_URL) {
+    logger.warn("whatsapp.signature_check_skipped_no_public_url");
+    next();
+    return;
+  }
 
-webhookRouter.post("/webhook", (req: Request, res: Response) => {
-  if (!isValidSignature(req)) {
+  const signature = req.header("x-twilio-signature") ?? "";
+  const valid = twilio.validateRequest(
+    config.TWILIO_AUTH_TOKEN,
+    signature,
+    config.PUBLIC_WEBHOOK_URL,
+    req.body as Record<string, string>,
+  );
+
+  if (!valid) {
     logger.warn("whatsapp.invalid_signature");
     res.sendStatus(401);
     return;
   }
+  next();
+}
 
-  // Responder 200 enseguida: Meta espera una respuesta rápida y reintenta si
-  // no la recibe. El procesamiento real sigue en segundo plano.
-  res.sendStatus(200);
+webhookRouter.post("/webhook", validateTwilioSignature, (req: Request, res: Response) => {
+  // Responder rápido: Twilio espera una respuesta pronta y reintenta si no
+  // la recibe. El procesamiento real sigue en segundo plano.
+  res.status(200).type("text/xml").send("<Response></Response>");
 
-  const payload = req.body as WhatsAppWebhookPayload;
-  for (const entry of payload.entry ?? []) {
-    for (const change of entry.changes ?? []) {
-      const value = change.value;
-      const contactsByWaId = new Map(
-        (value?.contacts ?? []).map((c) => [c.wa_id, c.profile.name]),
-      );
+  const body = req.body as Record<string, string>;
+  const messageId = body.MessageSid;
+  const from = (body.From ?? "").replace(/^whatsapp:/, "");
+  const text = body.Body;
+  const senderName = body.ProfileName || from;
 
-      for (const message of value?.messages ?? []) {
-        if (message.type !== "text" || !message.text) {
-          logger.info("whatsapp.unsupported_message_type", { type: message.type });
-          continue;
-        }
-        if (alreadyProcessed(message.id)) continue;
-
-        void markAsRead(message.id);
-
-        const senderName = contactsByWaId.get(message.from) ?? message.from;
-        handleIncomingMessage({
-          from: message.from,
-          name: senderName,
-          text: message.text.body,
-        }).catch((error) => {
-          logger.error("agent.handle_message_failed", {
-            from: message.from,
-            error: String(error),
-          });
-        });
-      }
-    }
+  if (!messageId || !from || !text) {
+    logger.info("whatsapp.unsupported_or_incomplete_message", { hasBody: Boolean(text) });
+    return;
   }
+  if (alreadyProcessed(messageId)) return;
+
+  handleIncomingMessage({ from, name: senderName, text }).catch((error) => {
+    logger.error("agent.handle_message_failed", { from, error: String(error) });
+  });
 });

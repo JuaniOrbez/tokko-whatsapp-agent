@@ -4,11 +4,23 @@ import { z } from "zod";
 const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
 
-  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1, "falta WHATSAPP_PHONE_NUMBER_ID"),
-  WHATSAPP_ACCESS_TOKEN: z.string().min(1, "falta WHATSAPP_ACCESS_TOKEN"),
-  WHATSAPP_VERIFY_TOKEN: z.string().min(1, "falta WHATSAPP_VERIFY_TOKEN"),
-  WHATSAPP_API_VERSION: z.string().default("v21.0"),
-  WHATSAPP_APP_SECRET: z.string().optional(),
+  // Twilio (WhatsApp vía sandbox o número productivo).
+  TWILIO_ACCOUNT_SID: z.string().min(1, "falta TWILIO_ACCOUNT_SID"),
+  TWILIO_AUTH_TOKEN: z.string().min(1, "falta TWILIO_AUTH_TOKEN"),
+  // Formato E.164 con prefijo whatsapp:, ej. "whatsapp:+14155238886" (sandbox).
+  TWILIO_WHATSAPP_FROM: z.string().min(1, "falta TWILIO_WHATSAPP_FROM"),
+  // Validar la firma X-Twilio-Signature del webhook (recomendado en producción).
+  TWILIO_VALIDATE_SIGNATURE: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  // URL pública completa del webhook (https://tu-dominio/webhook) — Twilio la
+  // necesita para validar la firma; en Meta no hacía falta porque el propio
+  // navegador armaba la URL en el paso de verificación.
+  PUBLIC_WEBHOOK_URL: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z.string().url().optional(),
+  ),
 
   TOKKO_API_KEY: z.string().min(1, "falta TOKKO_API_KEY"),
   TOKKO_API_BASE_URL: z.string().url().default("https://www.tokkobroker.com/api/v1"),

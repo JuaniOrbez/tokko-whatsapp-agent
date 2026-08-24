@@ -1,17 +1,12 @@
-import express, { type Request } from "express";
+import express from "express";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
 import { webhookRouter } from "./whatsapp/webhook.js";
 
 const app = express();
 
-app.use(
-  express.json({
-    verify: (req: Request & { rawBody?: Buffer }, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
+// Twilio manda los webhooks como application/x-www-form-urlencoded.
+app.use(express.urlencoded({ extended: false }));
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
