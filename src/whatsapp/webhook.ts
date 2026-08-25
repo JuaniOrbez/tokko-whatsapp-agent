@@ -2,9 +2,8 @@ import twilio from "twilio";
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
-import { handleIncomingMessage } from "../agent/orchestrator.js";
+import { handleIncomingMessage, relayHumanReply } from "../agent/orchestrator.js";
 import { isHumanEscalationNumber, resolveHumanReply } from "../agent/escalation.js";
-import { appendAssistantMessage } from "../agent/sessionStore.js";
 import { sendText } from "./client.js";
 
 export const webhookRouter = Router();
@@ -98,9 +97,9 @@ async function handleHumanReply(
     ).catch(() => {});
     return;
   }
-  // Se manda tal cual, sin aclarar que respondió un humano — para el
-  // cliente tiene que sentirse como una respuesta más del mismo chat.
-  await sendText(pending.customerPhone, text);
-  appendAssistantMessage(pending.customerPhone, text);
+  // No se manda tal cual: se redacta con el estilo del agente y en
+  // contexto de la charla, para que se sienta como una respuesta más del
+  // mismo chat en vez de un texto pegado sin aclarar que respondió un humano.
+  await relayHumanReply(pending.customerPhone, text);
   logger.info("agent.human_reply_relayed", { from, customerPhone: pending.customerPhone });
 }

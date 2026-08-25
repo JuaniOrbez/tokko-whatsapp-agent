@@ -8,6 +8,7 @@ import { escalateToHumans } from "./escalation.js";
 import {
   getHistory,
   saveHistory,
+  appendAssistantMessage,
   hasSubmittedInquiry,
   markInquirySubmitted,
 } from "./sessionStore.js";
@@ -48,13 +49,15 @@ Cuándo usar cada herramienta:
 - share_file: cuando pidan fotos, planos, brochure/folleto o ficha (de una
   propiedad o de un emprendimiento) y exista un archivo relacionado en
   Drive. Buscá con palabras clave del nombre del proyecto/propiedad. Si no
-  aparece nada ("sent" es false), la herramienta ya le avisó sola a un
-  agente humano (ver "escalated") — no llames aparte a escalate_to_human
-  para lo mismo. En tu respuesta confirmá explícitamente qué le avisaste al
-  equipo (ej. "ya le avisé al equipo que buscás el brochure de X, en breve
-  te lo mandan") antes de ofrecer cualquier otra cosa — no cambies de tema
-  a ofrecer fotos u otro material sin primero dejar claro que estás
-  consultando por lo que pidió.
+  aparece nada ("sent" es false), la herramienta ya escaló sola por
+  detrás (ver "escalated") — no llames aparte a escalate_to_human para lo
+  mismo. En tu respuesta confirmá explícitamente qué estás gestionando
+  (ej. "lo estoy consultando, en cuanto lo tenga te lo paso") antes de
+  ofrecer cualquier otra cosa — no cambies de tema a ofrecer fotos u otro
+  material sin primero dejar claro que estás averiguando lo que pidió.
+  Hablá siempre en primera persona vos como si lo estuvieras resolviendo
+  vos mismo — nunca menciones "el equipo", "un compañero" ni que hay un
+  humano de por medio, aunque en la práctica lo haya.
 - save_lead_notes: cuando el cliente comparta presupuesto, zona de interés,
   plazos u otra info con valor comercial real — queda como una consulta
   nueva pendiente de revisión en Tokko, así que no la uses para cada
@@ -67,9 +70,11 @@ Cuándo usar cada herramienta:
 - escalate_to_human: cuando el cliente pida algo que ninguna herramienta te
   puede resolver (un dato que no está en Tokko/Drive, una condición
   comercial particular, reclamo, o simplemente no sabés la respuesta),
-  usala para avisarle a un agente humano y decile al cliente que en breve
-  lo contacta alguien del equipo. No es lo mismo que save_lead_notes (esa
-  es para guardar info comercial, no para pedir ayuda).
+  usala para escalarlo por detrás. Igual que con share_file: contale al
+  cliente en primera persona que lo estás averiguando/consultando y que en
+  breve le confirmás, sin mencionar "el equipo" ni que hay un humano
+  resolviéndolo. No es lo mismo que save_lead_notes (esa es para guardar
+  info comercial, no para pedir ayuda).
 
 Si no tenés información suficiente para responder y ninguna herramienta te
 la puede dar, no inventes: pedí la información que falta o escalá con
@@ -202,4 +207,49 @@ async function runAgentLoop(
     reason: "El agente se quedó dando vueltas sin poder cerrar una respuesta.",
   }).catch((error) => logger.warn("agent.escalation_failed", { error: String(error) }));
   return "Estoy revisando tu consulta con más detalle, te respondo en breve.";
+}
+
+const RELAY_SYSTEM_PROMPT = `Sos el mismo asistente de WhatsApp de la inmobiliaria de siempre,
+en la misma conversación con este cliente. Alguien del equipo te acaba de
+pasar la info que faltaba para contestarle algo que le habías dicho que
+ibas a averiguar/consultar.
+
+Redactá el mensaje final para el cliente entregándole esa información como
+si la hubieras conseguido vos — nunca menciones que fue un humano quien
+respondió, ni "el equipo", ni ningún hand-off. Estilo español rioplatense,
+corto, directo, sin markdown de títulos. No agregues datos que no estén en
+la info que te paso, y no repreguntes nada — es un mensaje final, no un
+turno de herramientas.`;
+
+/**
+ * Redacta y manda al cliente la respuesta que un humano dejó para una
+ * consulta escalada (ver webhook.ts#handleHumanReply / escalation.ts). Usa
+ * el historial de la conversación para que la redacción quede natural y en
+ * contexto, en vez de pegar el texto del humano tal cual.
+ */
+export async function relayHumanReply(customerPhone: string, humanText: string): Promise<void> {
+  const history = getHistory(customerPhone);
+  const response = await anthropic.messages.create({
+    model: "claude-opus-5",
+    max_tokens: 512,
+    system: RELAY_SYSTEM_PROMPT,
+    messages: [
+      ...history,
+      { role: "user", content: `[Info que te pasó el equipo para el cliente]: "${humanText}"` },
+    ],
+  });
+
+  const replyText = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+
+  if (!replyText) {
+    logger.warn("agent.relay_human_reply_empty", { customerPhone });
+    return;
+  }
+
+  await sendText(customerPhone, replyText);
+  appendAssistantMessage(customerPhone, replyText);
 }

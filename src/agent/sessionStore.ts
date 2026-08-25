@@ -17,9 +17,9 @@ export function saveHistory(phone: string, messages: Anthropic.MessageParam[]): 
 
 /**
  * Agrega un mensaje "del asistente" al historial sin pasar por el agente —
- * usado cuando la respuesta de un humano se reenvía directo al cliente (ver
- * webhook.ts), para que quede en el contexto de la conversación como si el
- * agente ya lo hubiera dicho.
+ * usado cuando la respuesta de un humano se reenvía al cliente (ver
+ * orchestrator.ts#relayHumanReply), para que quede en el contexto de la
+ * conversación como si el agente ya lo hubiera dicho.
  */
 export function appendAssistantMessage(phone: string, text: string): void {
   const history = getHistory(phone);
