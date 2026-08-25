@@ -64,6 +64,9 @@ export interface AppSettings {
   // "vería" lo que el cliente recibió). Si editás el template en Twilio,
   // actualizá este texto también para que no queden desincronizados.
   initiateConversationTemplateText?: string;
+  // Hora local (Argentina, 0-23) en la que se manda el resumen diario por
+  // WhatsApp — ver src/scheduler.ts y src/agent/dailySummary.ts.
+  dailySummaryHour: number;
 }
 
 const SETTINGS_PATH = path.resolve(process.cwd(), "data", "settings.json");
@@ -100,6 +103,7 @@ function defaultSettings(): AppSettings {
     initiateConversationTemplateSid: undefined,
     initiateConversationTemplateText:
       "Hola {{1}}! Somos de ismo Propiedades. Nos comentaron que estás buscando {{2}}. ¿En qué te podemos ayudar?",
+    dailySummaryHour: 20,
   };
 }
 

@@ -5,3 +5,4 @@ dist/
 .DS_Store
 google-service-account.json
 data/settings.json
+data/conversations.jsonl

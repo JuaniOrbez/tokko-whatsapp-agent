@@ -5,6 +5,7 @@ import { logger } from "../logger.js";
 import { handleIncomingMessage, relayHumanReply } from "../agent/orchestrator.js";
 import { isHumanEscalationNumber, resolveHumanReply } from "../agent/escalation.js";
 import { appendAssistantMessage } from "../agent/sessionStore.js";
+import { appendConversationLog, getLastKnownName } from "../agent/conversationLog.js";
 import { sendText, sendDocumentByLink, withTwilioMediaAuth } from "./client.js";
 
 export const webhookRouter = Router();
@@ -137,6 +138,13 @@ async function handleHumanReply(
       caption,
     );
     appendAssistantMessage(pending.customerPhone, caption);
+    appendConversationLog({
+      ts: Date.now(),
+      phone: pending.customerPhone,
+      name: getLastKnownName(pending.customerPhone),
+      role: "assistant",
+      text: `${caption} [archivo adjunto]`,
+    });
     logger.info("agent.human_reply_relayed_media", { from, customerPhone: pending.customerPhone });
     return;
   }

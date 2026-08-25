@@ -8,6 +8,7 @@ import {
   type CommunicationStyleOverride,
 } from "../settings.js";
 import { initiateConversation } from "../agent/orchestrator.js";
+import { renderConversationsList, renderConversationDetail } from "./conversationsView.js";
 import { logger } from "../logger.js";
 
 export const adminRouter = Router();
@@ -44,6 +45,19 @@ adminRouter.get("/admin", (req: Request, res: Response) => {
   const started = req.query.started === "1";
   const startError = typeof req.query.startError === "string" ? req.query.startError : undefined;
   res.type("html").send(renderPage(getSettings(), { saved, started, startError }));
+});
+
+adminRouter.get("/admin/conversations", (_req: Request, res: Response) => {
+  res.type("html").send(renderConversationsList());
+});
+
+adminRouter.get("/admin/conversations/:phone", (req: Request, res: Response) => {
+  renderConversationDetail(req.params.phone)
+    .then((html) => res.type("html").send(html))
+    .catch((error) => {
+      logger.error("admin.conversation_detail_failed", { error: String(error) });
+      res.status(500).send("Error armando la conversación.");
+    });
 });
 
 // req.body.stageKey/stageLabel/stageId pueden venir como string (si hay una
@@ -100,6 +114,7 @@ adminRouter.post("/admin", (req: Request, res: Response) => {
     },
     initiateConversationTemplateSid: String(body.initiateTemplateSid ?? "").trim() || undefined,
     initiateConversationTemplateText: String(body.initiateTemplateText ?? "").trim() || undefined,
+    dailySummaryHour: toNumberOrUndefined(body.dailySummaryHour as string | undefined) ?? 20,
   };
 
   saveSettings(settings);
@@ -317,10 +332,11 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
 <body>
   <header>
     <div class="logo">🤖</div>
-    <div>
+    <div style="flex:1">
       <h1>Agente WhatsApp</h1>
       <p>Panel de configuración</p>
     </div>
+    <a href="/admin/conversations" style="color:white;text-decoration:none;font-size:0.85rem;opacity:0.9;border:1px solid rgba(255,255,255,0.4);padding:8px 14px;border-radius:8px;">Ver conversaciones</a>
   </header>
   <main>
     ${saved ? '<div class="banner">✓ Guardado correctamente.</div>' : ""}
@@ -412,6 +428,17 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
             <label for="initiateTemplateText">Texto del template (tal cual quedó aprobado)</label>
             <textarea id="initiateTemplateText" name="initiateTemplateText" placeholder="Hola {{1}}! Somos de ismo Propiedades...">${esc(settings.initiateConversationTemplateText)}</textarea>
             <div class="hint">Usá {{1}} para el nombre y {{2}} para el motivo, en ese orden — tiene que coincidir con lo que aprobaste en Twilio, si no el agente va a "recordar" algo distinto de lo que el cliente recibió.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary><span class="icon">📋</span> Resumen diario<span class="chevron">›</span></summary>
+        <div class="section-body">
+          <div class="field">
+            <label for="dailySummaryHour">Hora local (Argentina) en la que se manda</label>
+            <input type="number" id="dailySummaryHour" name="dailySummaryHour" min="0" max="23" value="${esc(settings.dailySummaryHour)}">
+            <div class="hint">Se manda por WhatsApp a los números de la sección "Números de contacto", con lo que pasó ese día. Si no hubo actividad, no manda nada.</div>
           </div>
         </div>
       </details>

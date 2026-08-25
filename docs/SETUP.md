@@ -300,6 +300,33 @@ no inició la conversación). Para habilitar esto:
    cliente, y el agente le manda el mensaje y sigue la conversación
    normalmente cuando responda.
 
+### Resumen diario
+
+En la sección "Resumen diario" se elige la hora local (Argentina) en la
+que el agente manda, por WhatsApp y a los números de "Números de
+contacto", un resumen de las conversaciones del día — quién escribió, qué
+buscaba, en qué quedó. Si no hubo actividad ese día, no manda nada. No
+hace falta ningún servicio externo: se arma con `data/conversations.jsonl`
+(ver más abajo) y un disparador interno del propio servidor (sin
+`node-cron` ni nada por el estilo, un `setTimeout` que se reprograma solo
+cada vez que dispara).
+
+### Ver conversaciones (`/admin/conversations`)
+
+Desde el botón "Ver conversaciones" del panel se accede a la lista de
+todos los que le escribieron al agente. Al entrar a una en particular, se
+arma automáticamente (con Claude) un diagrama de flujo de esa charla puntual
+— qué preguntó, qué se le contestó, en qué derivó — además del historial
+completo en texto debajo.
+
+### Historial durable
+
+Tanto el resumen diario como el diagrama de conversaciones leen de
+`data/conversations.jsonl` — un registro simple (una línea de JSON por
+mensaje visible, cliente o agente) separado del historial en memoria que
+usa el agente para responder (ese sigue viviendo solo en RAM y se pierde
+al reiniciar, como siempre). Tampoco se sube a git.
+
 Lo que **no** se mueve a `/admin` (queda en `.env`, requiere reiniciar el
 servidor si cambia): las credenciales de Twilio, Tokko, Google y
 Anthropic, y la ruta del archivo de la cuenta de servicio de Google — son

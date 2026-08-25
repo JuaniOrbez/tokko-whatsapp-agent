@@ -13,6 +13,7 @@ import {
   hasSubmittedInquiry,
   markInquirySubmitted,
 } from "./sessionStore.js";
+import { appendConversationLog, getLastKnownName } from "./conversationLog.js";
 
 const anthropic = new Anthropic(); // toma ANTHROPIC_API_KEY del entorno
 
@@ -154,11 +155,13 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
     const ctx: AgentContext = { customerPhone: from, customerName: name, contactId };
 
     const messages: Anthropic.MessageParam[] = [...getHistory(from), { role: "user", content: text }];
+    appendConversationLog({ ts: Date.now(), phone: from, name, role: "user", text });
 
     const replyText = await runAgentLoop(messages, ctx, text);
 
     if (replyText) {
       await sendText(from, replyText);
+      appendConversationLog({ ts: Date.now(), phone: from, name, role: "assistant", text: replyText });
     }
     saveHistory(from, messages);
   } catch (error) {
@@ -283,6 +286,13 @@ export async function relayHumanReply(customerPhone: string, humanText: string):
 
   await sendText(customerPhone, replyText);
   appendAssistantMessage(customerPhone, replyText);
+  appendConversationLog({
+    ts: Date.now(),
+    phone: customerPhone,
+    name: getLastKnownName(customerPhone),
+    role: "assistant",
+    text: replyText,
+  });
 }
 
 /**
@@ -322,6 +332,13 @@ export async function initiateConversation(input: {
     "Hola {{1}}! Somos de ismo Propiedades. Nos comentaron que estás buscando {{2}}. ¿En qué te podemos ayudar?";
   const renderedText = templateText.replace("{{1}}", input.customerName).replace("{{2}}", input.reason);
   appendAssistantMessage(input.phone, renderedText);
+  appendConversationLog({
+    ts: Date.now(),
+    phone: input.phone,
+    name: input.customerName,
+    role: "assistant",
+    text: renderedText,
+  });
 
   logger.info("agent.conversation_initiated", { phone: input.phone });
   return { ok: true };
