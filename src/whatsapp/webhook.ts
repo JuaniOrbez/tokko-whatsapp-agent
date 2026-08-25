@@ -97,6 +97,15 @@ function guessFilename(contentType: string | undefined): string {
   return `archivo.${ext}`;
 }
 
+// WhatsApp a veces precompleta el campo de texto con el nombre del archivo
+// al adjuntarlo, y si no se borra antes de mandar, no aporta nada como
+// mensaje — un nombre de archivo real casi nunca tiene espacios y siempre
+// termina en una extensión, a diferencia de un mensaje escrito a mano.
+function looksLikeFilename(text: string): boolean {
+  const trimmed = text.trim();
+  return !trimmed.includes(" ") && /\.[a-zA-Z0-9]{2,5}$/.test(trimmed);
+}
+
 async function handleHumanReply(
   from: string,
   text: string,
@@ -120,7 +129,7 @@ async function handleHumanReply(
     // como mediaUrl saliente dentro de la misma cuenta. Si no escribió
     // nada, igual mandamos un texto por defecto — nunca un archivo pelado
     // sin ningún contexto.
-    const caption = text || "Acá tenés lo que me pediste.";
+    const caption = text && !looksLikeFilename(text) ? text : "Acá tenés lo que me pediste.";
     await sendDocumentByLink(
       pending.customerPhone,
       withTwilioMediaAuth(mediaUrl),
