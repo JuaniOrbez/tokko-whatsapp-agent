@@ -126,78 +126,109 @@ function renderPage(settings: AppSettings, saved: boolean): string {
 <title>Agente WhatsApp — Configuración</title>
 <style>
   :root {
-    --brand: #1a7f4b;
-    --brand-dark: #156138;
-    --bg: #f4f6f5;
+    --brand: #6d5ef8;
+    --brand-dark: #5646e0;
+    --brand-soft: #efedfe;
+    --accent: #22c3a6;
+    --bg: #f4f5fb;
     --card: #ffffff;
-    --border: #e2e5e4;
-    --text: #1c1f1e;
-    --text-muted: #6b7370;
+    --border: #eaeaf3;
+    --text: #16162a;
+    --text-muted: #75758c;
+    --shadow-sm: 0 1px 2px rgba(23, 21, 60, 0.05), 0 1px 3px rgba(23, 21, 60, 0.06);
+    --shadow-md: 0 4px 14px rgba(23, 21, 60, 0.08);
   }
   * { box-sizing: border-box; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    margin: 0; background: var(--bg); color: var(--text);
+    margin: 0; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased;
   }
   header {
-    background: linear-gradient(135deg, var(--brand), var(--brand-dark));
-    color: white; padding: 22px 24px;
-    display: flex; align-items: center; gap: 12px;
+    background: linear-gradient(120deg, var(--brand) 0%, var(--brand-dark) 55%, #4433c9 100%);
+    color: white; padding: 28px 24px 32px;
+    display: flex; align-items: center; gap: 14px;
+    box-shadow: 0 4px 20px rgba(86, 70, 224, 0.25);
   }
   header .logo {
-    width: 38px; height: 38px; border-radius: 10px; background: rgba(255,255,255,0.18);
-    display: flex; align-items: center; justify-content: center; font-size: 1.3rem;
+    width: 42px; height: 42px; border-radius: 13px; background: rgba(255,255,255,0.16);
+    border: 1px solid rgba(255,255,255,0.25);
+    display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.2);
   }
-  header h1 { font-size: 1.2rem; margin: 0; }
-  header p { margin: 2px 0 0; font-size: 0.85rem; opacity: 0.85; }
-  main { max-width: 680px; margin: 32px auto 64px; padding: 0 16px; }
+  header h1 { font-size: 1.25rem; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+  header p { margin: 3px 0 0; font-size: 0.85rem; opacity: 0.82; }
+  main { max-width: 680px; margin: -14px auto 64px; padding: 0 16px; }
   .banner {
-    background: #e6f4ea; border: 1px solid var(--brand); color: #145030;
-    padding: 10px 14px; border-radius: 8px; margin-bottom: 20px; font-size: 0.92rem;
+    background: #e9fbf4; border: 1px solid #9be8ce; color: #0d7a5a;
+    padding: 11px 16px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem;
+    box-shadow: var(--shadow-sm); font-weight: 500;
   }
-  form { display: flex; flex-direction: column; gap: 16px; }
+  form { display: flex; flex-direction: column; gap: 18px; }
   details.section {
-    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-    overflow: hidden;
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    overflow: hidden; box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease;
   }
+  details.section[open] { box-shadow: var(--shadow-md); }
   details.section[open] summary { border-bottom: 1px solid var(--border); }
   details.section summary {
-    list-style: none; cursor: pointer; padding: 16px 20px;
-    display: flex; align-items: center; gap: 10px;
+    list-style: none; cursor: pointer; padding: 18px 22px;
+    display: flex; align-items: center; gap: 12px;
     font-weight: 600; font-size: 1rem; user-select: none;
+    transition: background 0.15s ease;
   }
+  details.section summary:hover { background: #fafafe; }
   details.section summary::-webkit-details-marker { display: none; }
-  details.section summary .icon { font-size: 1.1rem; }
-  details.section summary .chevron { margin-left: auto; color: var(--text-muted); transition: transform 0.15s; }
-  details.section[open] summary .chevron { transform: rotate(90deg); }
-  details.section summary .subtitle { font-weight: 400; font-size: 0.82rem; color: var(--text-muted); }
-  .section-body { padding: 4px 20px 20px; display: flex; flex-direction: column; gap: 14px; }
-  .field label { display: block; font-size: 0.88rem; margin-bottom: 5px; color: #3c4240; font-weight: 500; }
-  input[type=text], input[type=number], textarea {
-    width: 100%; padding: 9px 10px; font-size: 0.95rem;
-    border: 1px solid #cfd4d2; border-radius: 7px; font-family: inherit; background: #fcfdfd;
+  details.section summary .icon {
+    font-size: 1.05rem; width: 34px; height: 34px; border-radius: 10px;
+    background: var(--brand-soft); display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
   }
-  input:focus, textarea:focus { outline: 2px solid var(--brand); outline-offset: 1px; border-color: var(--brand); }
+  details.section summary .chevron {
+    margin-left: auto; color: var(--text-muted); font-size: 1.1rem;
+    transition: transform 0.2s ease; transform: rotate(0deg);
+  }
+  details.section[open] summary .chevron { transform: rotate(90deg); color: var(--brand); }
+  details.section summary .subtitle { font-weight: 400; font-size: 0.82rem; color: var(--text-muted); }
+  .section-body { padding: 6px 22px 24px; display: flex; flex-direction: column; gap: 16px; }
+  .field label { display: block; font-size: 0.85rem; margin-bottom: 6px; color: var(--text); font-weight: 600; }
+  input[type=text], input[type=number], textarea {
+    width: 100%; padding: 10px 12px; font-size: 0.95rem;
+    border: 1.5px solid var(--border); border-radius: 10px; font-family: inherit;
+    background: #fbfbfd; color: var(--text); transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  input::placeholder, textarea::placeholder { color: #b3b3c6; }
+  input:focus, textarea:focus {
+    outline: none; border-color: var(--brand); background: #fff;
+    box-shadow: 0 0 0 3.5px var(--brand-soft);
+  }
   textarea { min-height: 76px; resize: vertical; }
-  .hint { font-size: 0.8rem; color: var(--text-muted); margin-top: 5px; line-height: 1.4; }
-  .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+  .hint { font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
+  .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 16px; }
   @media (max-width: 480px) { .stages { grid-template-columns: 1fr; } }
-  .stage-rows { display: flex; flex-direction: column; gap: 8px; }
-  .stage-row-header { display: grid; grid-template-columns: 1fr 1.4fr 90px; gap: 8px; font-size: 0.78rem; color: var(--text-muted); padding: 0 2px; }
+  .stage-rows { display: flex; flex-direction: column; gap: 9px; }
+  .stage-row-header {
+    display: grid; grid-template-columns: 1fr 1.4fr 90px; gap: 8px;
+    font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); padding: 0 2px; font-weight: 600;
+  }
   .stage-row { display: grid; grid-template-columns: 1fr 1.4fr 90px; gap: 8px; }
   @media (max-width: 480px) { .stage-row, .stage-row-header { grid-template-columns: 1fr; } }
-  .actions { position: sticky; bottom: 0; padding-top: 4px; }
+  .actions { position: sticky; bottom: 16px; padding-top: 4px; }
   button {
-    padding: 11px 22px; font-size: 0.95rem; font-weight: 600; background: var(--brand);
-    color: white; border: none; border-radius: 8px; cursor: pointer; width: 100%;
+    padding: 13px 22px; font-size: 0.95rem; font-weight: 600;
+    background: linear-gradient(120deg, var(--brand), var(--brand-dark));
+    color: white; border: none; border-radius: 12px; cursor: pointer; width: 100%;
+    box-shadow: var(--shadow-md); transition: transform 0.12s ease, box-shadow 0.12s ease;
   }
-  button:hover { background: var(--brand-dark); }
+  button:hover { box-shadow: 0 6px 20px rgba(86, 70, 224, 0.32); transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
   .add-row-btn {
-    width: auto; padding: 7px 14px; font-size: 0.85rem; font-weight: 500;
-    background: transparent; color: var(--brand); border: 1px solid var(--brand);
-    margin-top: 4px; align-self: flex-start;
+    width: auto; padding: 8px 16px; font-size: 0.84rem; font-weight: 600;
+    background: var(--brand-soft); color: var(--brand-dark); border: none;
+    box-shadow: none; margin-top: 2px; align-self: flex-start; border-radius: 999px;
   }
-  .add-row-btn:hover { background: #eaf5ef; }
+  .add-row-btn:hover { background: #e1ddfd; box-shadow: none; transform: none; }
 </style>
 </head>
 <body>
