@@ -50,7 +50,6 @@ const envSchema = z.object({
   TOKKO_OPERATION_ID_RENT: z.coerce.number().optional(),
 
   GOOGLE_SERVICE_ACCOUNT_FILE: z.string().min(1, "falta GOOGLE_SERVICE_ACCOUNT_FILE"),
-  GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
 
   ANTHROPIC_API_KEY: z.string().optional(),
 

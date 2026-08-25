@@ -158,9 +158,11 @@ de Meta). Ahí se actualiza `TWILIO_WHATSAPP_FROM` con el número real.
    `nombre@proyecto.iam.gserviceaccount.com`), con permiso de **Editor** (no
    alcanza con Lector: `ensurePublicLink` en `src/drive/client.ts` necesita
    poder cambiar los permisos de cada archivo para generar el link público,
-   y eso requiere Editor).
-5. Copiá el **ID de la carpeta** (de la URL de Drive,
-   `drive.google.com/drive/folders/ESTE_ID`) → `GOOGLE_DRIVE_FOLDER_ID`.
+   y eso requiere Editor). Ese permiso se hereda a todo lo que haya adentro,
+   así que podés organizarla con subcarpetas sin problema — `findFilesByName`
+   busca por nombre entre todo lo que la cuenta de servicio puede ver, sin
+   importar en qué subcarpeta esté. No hace falta anotar el ID de la carpeta
+   en ningún lado.
 
 El agente comparte archivos poniéndolos como "cualquiera con el link puede
 ver" al momento de enviarlos — si preferís no hacer eso (por ejemplo,

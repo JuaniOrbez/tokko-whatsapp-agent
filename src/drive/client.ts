@@ -20,20 +20,25 @@ function escapeForDriveQuery(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
-/** Busca archivos por nombre (contiene) dentro de la carpeta configurada. */
+/**
+ * Busca archivos por nombre (contiene) entre todo lo que la cuenta de
+ * servicio puede ver. No restringe por `GOOGLE_DRIVE_FOLDER_ID`: el permiso
+ * que le diste a esa carpeta ya se hereda a todas sus subcarpetas y
+ * archivos, así que alcanza con dejarla organizada como quieras (con
+ * subcarpetas incluso) — no hace falta que los archivos estén sueltos.
+ */
 export async function findFilesByName(query: string, limit = 5): Promise<DriveFileResult[]> {
-  const parts = [`trashed = false`, `name contains '${escapeForDriveQuery(query)}'`];
-  if (config.GOOGLE_DRIVE_FOLDER_ID) {
-    parts.push(`'${config.GOOGLE_DRIVE_FOLDER_ID}' in parents`);
-  }
-
   const res = await drive.files.list({
-    q: parts.join(" and "),
+    q: `trashed = false and name contains '${escapeForDriveQuery(query)}'`,
     fields: "files(id, name, mimeType, webViewLink, webContentLink)",
     pageSize: limit,
   });
 
   const files = res.data.files ?? [];
+  if (files.length === 0) {
+    logger.warn("drive.no_match", { query });
+  }
+
   const results: DriveFileResult[] = [];
   for (const file of files) {
     if (!file.id || !file.name) continue;
