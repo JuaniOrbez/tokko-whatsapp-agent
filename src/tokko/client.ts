@@ -1,4 +1,5 @@
-import { config, OPPORTUNITY_STAGES, type OpportunityStageKey } from "../config.js";
+import { config, type OpportunityStageKey } from "../config.js";
+import { getSettings } from "../settings.js";
 import { logger } from "../logger.js";
 import type {
   TokkoContact,
@@ -253,7 +254,7 @@ class TokkoClient {
    * Tokko habilita escritura sobre /contact/{id}/ más adelante.
    */
   async updateContactStage(contactId: number, stageKey: OpportunityStageKey): Promise<void> {
-    const stageId = OPPORTUNITY_STAGES[stageKey];
+    const stageId = getSettings().tokko.stages[stageKey];
     if (!stageId) {
       logger.warn("tokko.stage_not_configured", { stageKey });
       return;

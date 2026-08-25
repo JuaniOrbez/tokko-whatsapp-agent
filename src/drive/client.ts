@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { config } from "../config.js";
+import { getSettings } from "../settings.js";
 import { logger } from "../logger.js";
 
 export interface DriveFileResult {
@@ -53,20 +54,20 @@ export async function findFilesByName(query: string, limit = 5): Promise<DriveFi
   return results;
 }
 
-const ZONAPROP_LINKS_FILE_NAME = "Links Zonaprop";
-
 /**
  * Busca el link de Zonaprop de una propiedad/emprendimiento en un archivo
  * de texto simple en Drive (una lista a mano tipo "nombre,link" por línea,
  * ver docs/SETUP.md) — Tokko no expone ese link por API, es de Zonaprop.
+ * El nombre del archivo se configura desde /admin (getSettings().zonapropLinksFileName).
  * Devuelve null si no existe el archivo o no hay ninguna línea que
  * coincida con `query`.
  */
 export async function findZonapropLink(query: string): Promise<string | null> {
   // Búsqueda directa (sin pasar por findFilesByName) para no hacer público
   // por accidente un archivo que es solo para uso interno del agente.
+  const fileName = getSettings().zonapropLinksFileName;
   const list = await drive.files.list({
-    q: `trashed = false and name contains '${escapeForDriveQuery(ZONAPROP_LINKS_FILE_NAME)}'`,
+    q: `trashed = false and name contains '${escapeForDriveQuery(fileName)}'`,
     fields: "files(id, mimeType)",
     pageSize: 1,
   });

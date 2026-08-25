@@ -71,6 +71,11 @@ const envSchema = z.object({
       )
       .optional(),
   ),
+
+  // Protege el panel /admin (ver src/admin/router.ts) con autenticación
+  // básica (usuario "admin", esta contraseña). Sin esto, /admin devuelve
+  // 503 en vez de quedar expuesto sin protección.
+  ADMIN_PASSWORD: z.string().optional(),
 });
 
 function loadConfig() {

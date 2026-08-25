@@ -3,7 +3,8 @@ import { tokkoClient } from "../tokko/client.js";
 import { findFilesByName, findZonapropLink } from "../drive/client.js";
 import { sendDocumentByLink } from "../whatsapp/client.js";
 import { logger } from "../logger.js";
-import { config, type OpportunityStageKey } from "../config.js";
+import { type OpportunityStageKey } from "../config.js";
+import { getSettings } from "../settings.js";
 import { escalateToHumans } from "./escalation.js";
 
 export interface AgentContext {
@@ -186,11 +187,12 @@ export async function executeTool(
   switch (name) {
     case "search_properties": {
       const operation = input.operation as "venta" | "alquiler" | undefined;
+      const tokkoSettings = getSettings().tokko;
       const operationId =
         operation === "venta"
-          ? config.TOKKO_OPERATION_ID_SALE
+          ? tokkoSettings.operationIdSale
           : operation === "alquiler"
-            ? config.TOKKO_OPERATION_ID_RENT
+            ? tokkoSettings.operationIdRent
             : undefined;
 
       const { items, matchedAtLeast, exhausted } = await tokkoClient.searchProperties({

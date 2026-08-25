@@ -1,5 +1,5 @@
 import { sendText } from "../whatsapp/client.js";
-import { config } from "../config.js";
+import { getSettings } from "../settings.js";
 
 interface PendingEscalation {
   customerPhone: string;
@@ -29,7 +29,7 @@ function normalizePhone(phone: string): string {
 }
 
 export function isHumanEscalationNumber(phone: string): boolean {
-  const numbers = config.HUMAN_ESCALATION_WHATSAPP_NUMBERS ?? [];
+  const numbers = getSettings().escalationNumbers;
   const normalized = normalizePhone(phone);
   return numbers.some((n) => normalizePhone(n) === normalized);
 }
@@ -46,8 +46,8 @@ export async function escalateToHumans(input: {
   question: string;
   reason?: string;
 }): Promise<boolean> {
-  const numbers = config.HUMAN_ESCALATION_WHATSAPP_NUMBERS;
-  if (!numbers || numbers.length === 0) return false;
+  const numbers = getSettings().escalationNumbers;
+  if (numbers.length === 0) return false;
 
   const alertText =
     `🔔 Consulta necesita revisión humana\n` +

@@ -3,6 +3,13 @@
 Los tres servicios se configuran de forma independiente. Podés hacerlos en
 cualquier orden, pero para probar el flujo completo necesitás los tres.
 
+Una aclaración importante sobre qué se edita dónde: `.env` es para
+credenciales e infraestructura (claves de API, tokens, rutas de archivos) —
+cambiarlo requiere reiniciar el servidor. Las cosas de negocio del día a
+día (números de escalamiento, IDs de Tokko, el archivo de links de
+Zonaprop) se editan **en caliente**, sin reiniciar nada, desde el panel
+**`/admin`** — ver la última sección de esta guía.
+
 ## 1. WhatsApp vía Twilio
 
 Se eligió Twilio en vez de conectar directo con Meta porque el paso de
@@ -132,17 +139,17 @@ de Meta). Ahí se actualiza `TWILIO_WHATSAPP_FROM` con el número real.
 5. **IDs de operación** (venta/alquiler): confirmado en una cuenta real que
    **Venta = `operation_id: 1`**. Para Alquiler, buscá en el JSON de
    `/property/` una propiedad publicada en alquiler y fijate su
-   `operations[].operation_id`. Completá `TOKKO_OPERATION_ID_SALE` (podés
-   usar `1` como punto de partida) y `TOKKO_OPERATION_ID_RENT` en `.env`. Si
-   los dejás vacíos, la búsqueda simplemente no filtra por tipo de operación.
+   `operations[].operation_id`. Estos IDs se cargan desde el panel
+   **`/admin`** (sección "Tokko — operaciones"), no en `.env` — si los
+   dejás vacíos, la búsqueda simplemente no filtra por tipo de operación.
 6. **Etapas del workflow de Oportunidades**: confirmadas en vivo contra el
-   panel de Oportunidades. Completá en `.env` (ver `.env.example` para los
-   nombres de variable): Aun no fueron Contactados, Sin Seguimiento,
-   Contactar, Primer Contacto hecho, Volver a Contactar, Evolucionando,
-   Tomar Accion (estado por defecto de todo contacto nuevo), Congelado y
-   Cerrado. Si tu cuenta tiene etapas distintas a estas, repetí el proceso:
-   entrá a un contacto de prueba en el panel, cambiale el estado, y pedí
-   `/contact/{id}/?key=...&format=json` para leer el `id` de
+   panel de Oportunidades. Se cargan también desde **`/admin`** (sección
+   "Tokko — etapas de Oportunidades"): Aun no fueron Contactados, Sin
+   Seguimiento, Contactar, Primer Contacto hecho, Volver a Contactar,
+   Evolucionando, Tomar Accion (estado por defecto de todo contacto nuevo),
+   Congelado y Cerrado. Si tu cuenta tiene etapas distintas a estas, repetí
+   el proceso: entrá a un contacto de prueba en el panel, cambiale el
+   estado, y pedí `/contact/{id}/?key=...&format=json` para leer el `id` de
    `opportunity_status` en cada paso.
 
 ## 3. Google Drive (cuenta de servicio)
@@ -175,8 +182,9 @@ Tokko no expone por API el link de la publicación en Zonaprop (ver
 comentario en `findZonapropLink` de `src/drive/client.ts`) — es un dato que
 genera Zonaprop, no Tokko. Si querés que el agente pueda pasarlo cuando se
 lo pidan, armá un archivo de texto plano (`.txt` o `.csv`) en la misma
-carpeta de Drive, llamado **`Links Zonaprop`** (ese nombre exacto, la
-extensión no importa), con una línea por propiedad/emprendimiento:
+carpeta de Drive, con el nombre que tengas configurado en **`/admin`**
+(sección "Google Drive" — por defecto **`Links Zonaprop`**), con una línea
+por propiedad/emprendimiento:
 
 ```
 LA VECINDAD Freire,https://www.zonaprop.com.ar/propiedades/clasificado/...
@@ -194,9 +202,9 @@ alguien del equipo por WhatsApp cuando no puede resolver una consulta. Es
 un mensaje saliente más, así que usa el mismo `TWILIO_WHATSAPP_FROM` que ya
 configuraste.
 
-1. En `.env`, completá `HUMAN_ESCALATION_WHATSAPP_NUMBERS` con el/los
-   número/s del equipo en formato E.164 (ej. `+5491122334455`), separados
-   por coma si son varios.
+1. En **`/admin`** (sección "Escalamiento a humano"), cargá el/los
+   número/s del equipo en formato E.164 (ej. `+5491122334455`), uno por
+   línea.
 2. **No es un grupo de WhatsApp**: la WhatsApp Business API (ni vía Twilio
    ni directo con Meta) permite mandar mensajes a un grupo por API — solo a
    números individuales, uno por uno. Si querés que llegue a varias
@@ -228,6 +236,35 @@ horas si nadie contesta.
 
 1. Conseguí una API key en [console.anthropic.com](https://console.anthropic.com)
    → `ANTHROPIC_API_KEY`.
+
+## 6. Panel de administración (`/admin`)
+
+Todo lo que antes había que editar a mano en `.env` (y reiniciar el
+servidor) para cambiar un número de teléfono o un ID de Tokko ahora se
+edita desde el navegador, en caliente, sin tocar la terminal:
+
+1. En `.env`, completá `ADMIN_PASSWORD` con una contraseña — la que
+   quieras, no la reutilices de otro lado. Sin esto, `/admin` devuelve un
+   error 503 en vez de quedar sin protección.
+2. Con el servidor corriendo, entrá a `http://localhost:3000/admin` (o tu
+   dominio + `/admin` si ya lo tenés desplegado). El navegador te va a
+   pedir usuario y contraseña: usuario `admin`, contraseña la que pusiste
+   en `ADMIN_PASSWORD`.
+3. Ahí se edita: los números de escalamiento, el nombre del archivo de
+   links de Zonaprop, y los IDs de Tokko (operación venta/alquiler y las 9
+   etapas de Oportunidades). Al guardar, los cambios aplican al toque, sin
+   reiniciar nada.
+
+Lo que **no** se mueve a `/admin` (queda en `.env`, requiere reiniciar el
+servidor si cambia): las credenciales de Twilio, Tokko, Google y
+Anthropic, y la ruta del archivo de la cuenta de servicio de Google — son
+secretos de infraestructura, no configuración de negocio, y exponerlos en
+una pantalla sería un riesgo de seguridad innecesario.
+
+Los valores quedan guardados en `data/settings.json` (no se sube a git,
+como `.env`) — la primera vez que arranca el servidor, ese archivo se crea
+solo tomando lo que ya tenías cargado en `.env` (si tenías algo), así que
+no perdés la configuración que ya te andaba funcionando.
 
 ## Dónde alojar el servidor
 
