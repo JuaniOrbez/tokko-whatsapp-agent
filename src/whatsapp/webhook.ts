@@ -3,6 +3,8 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { handleIncomingMessage } from "../agent/orchestrator.js";
+import { isHumanEscalationNumber, resolveHumanReply } from "../agent/escalation.js";
+import { sendText } from "./client.js";
 
 export const webhookRouter = Router();
 
@@ -65,7 +67,36 @@ webhookRouter.post("/webhook", validateTwilioSignature, (req: Request, res: Resp
   }
   if (alreadyProcessed(messageId)) return;
 
+  // Un número de escalamiento (ver HUMAN_ESCALATION_WHATSAPP_NUMBERS) nunca
+  // pasa por el agente — si nos escribe, es (idealmente) respondiendo a una
+  // consulta que le reenviamos, así que la enganchamos con esa consulta y
+  // se la mandamos directo al cliente en vez de tratarlo como un cliente más.
+  if (isHumanEscalationNumber(from)) {
+    handleHumanReply(from, text, body.OriginalRepliedMessageSid).catch((error) => {
+      logger.error("agent.handle_human_reply_failed", { from, error: String(error) });
+    });
+    return;
+  }
+
   handleIncomingMessage({ from, name: senderName, text }).catch((error) => {
     logger.error("agent.handle_message_failed", { from, error: String(error) });
   });
 });
+
+async function handleHumanReply(
+  from: string,
+  text: string,
+  repliedToSid: string | undefined,
+): Promise<void> {
+  const pending = resolveHumanReply(from, repliedToSid);
+  if (!pending) {
+    logger.warn("agent.human_reply_unmatched", { from });
+    await sendText(
+      from,
+      "No encontré ninguna consulta pendiente para reenviar esta respuesta — puede que ya se haya resuelto o vencido.",
+    ).catch(() => {});
+    return;
+  }
+  await sendText(pending.customerPhone, `Te escribe alguien de nuestro equipo:\n\n${text}`);
+  logger.info("agent.human_reply_relayed", { from, customerPhone: pending.customerPhone });
+}

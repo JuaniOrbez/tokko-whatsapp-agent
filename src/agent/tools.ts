@@ -1,9 +1,10 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { tokkoClient } from "../tokko/client.js";
 import { findFilesByName, findZonapropLink } from "../drive/client.js";
-import { sendDocumentByLink, sendText } from "../whatsapp/client.js";
+import { sendDocumentByLink } from "../whatsapp/client.js";
 import { logger } from "../logger.js";
 import { config, type OpportunityStageKey } from "../config.js";
+import { escalateToHumans } from "./escalation.js";
 
 export interface AgentContext {
   customerPhone: string;
@@ -177,14 +178,6 @@ export const agentTools: Anthropic.Tool[] = [
   },
 ];
 
-/** Manda `text` a todos los números de HUMAN_ESCALATION_WHATSAPP_NUMBERS. Devuelve false si no hay ninguno configurado. */
-export async function notifyHumans(text: string): Promise<boolean> {
-  const numbers = config.HUMAN_ESCALATION_WHATSAPP_NUMBERS;
-  if (!numbers || numbers.length === 0) return false;
-  await Promise.all(numbers.map((number) => sendText(number, text)));
-  return true;
-}
-
 export async function executeTool(
   name: string,
   input: Record<string, unknown>,
@@ -295,13 +288,12 @@ export async function executeTool(
       // resultó no ser confiable (a veces el modelo no llamaba a
       // escalate_to_human después de un error), así que queda garantizado acá.
       const escalate = async (reason: string) => {
-        const alertText =
-          `🔔 No se pudo mandar un archivo pedido por WhatsApp\n` +
-          `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
-          `Buscó: "${query}"\n` +
-          `Motivo: ${reason}\n` +
-          `¿Se lo podés mandar vos directamente?`;
-        return notifyHumans(alertText).catch((error) => {
+        return escalateToHumans({
+          customerPhone: ctx.customerPhone,
+          customerName: ctx.customerName,
+          question: `Pide el archivo "${query}" por WhatsApp — ¿se lo podés mandar vos directamente?`,
+          reason,
+        }).catch((error) => {
           logger.warn("agent.escalation_failed", { error: String(error) });
           return false;
         });
@@ -359,11 +351,11 @@ export async function executeTool(
 
     case "escalate_to_human": {
       const question = input.question as string;
-      const alertText =
-        `🔔 Consulta necesita revisión humana\n` +
-        `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
-        `Pregunta: ${question}`;
-      const escalated = await notifyHumans(alertText);
+      const escalated = await escalateToHumans({
+        customerPhone: ctx.customerPhone,
+        customerName: ctx.customerName,
+        question,
+      });
       if (!escalated) {
         logger.warn("agent.escalation_not_configured", { customerPhone: ctx.customerPhone });
         return JSON.stringify({

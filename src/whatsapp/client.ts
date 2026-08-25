@@ -8,7 +8,8 @@ function toWhatsAppAddress(phone: string): string {
   return phone.startsWith("whatsapp:") ? phone : `whatsapp:${phone}`;
 }
 
-export async function sendText(to: string, body: string): Promise<void> {
+/** Devuelve el SID del mensaje enviado (sirve para engancharlo con una respuesta citada más adelante). */
+export async function sendText(to: string, body: string): Promise<string> {
   logger.info("whatsapp.send_text", { to, length: body.length });
   const base = { from: config.TWILIO_WHATSAPP_FROM, to: toWhatsAppAddress(to) };
 
@@ -16,14 +17,15 @@ export async function sendText(to: string, body: string): Promise<void> {
   // texto libre ("ContentSid Required") — hay que mandarlo a través de un
   // Content Template con un único body "{{1}}".
   if (config.TWILIO_CONTENT_SID) {
-    await client.messages.create({
+    const message = await client.messages.create({
       ...base,
       contentSid: config.TWILIO_CONTENT_SID,
       contentVariables: JSON.stringify({ 1: body }),
     });
-    return;
+    return message.sid;
   }
-  await client.messages.create({ ...base, body });
+  const message = await client.messages.create({ ...base, body });
+  return message.sid;
 }
 
 export async function sendDocumentByLink(

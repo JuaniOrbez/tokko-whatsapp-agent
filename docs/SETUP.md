@@ -208,6 +208,22 @@ configuraste.
    WhatsApp) — si no, Twilio no le va a poder mandar el mensaje. Esto deja
    de ser necesario una vez que se pase a un número de WhatsApp productivo.
 
+### Que la respuesta del humano vuelva al cliente
+
+Cuando alguien del equipo responde el mensaje de alerta **citándolo**
+(mantener presionado sobre el mensaje → Responder, en WhatsApp), esa
+respuesta se le reenvía automáticamente al cliente que originó la consulta
+— no hace falta que el humano haga nada más. Si contesta sin citar el
+mensaje (por ejemplo escribiendo directo, sin usar "Responder"), el agente
+igual intenta adivinar a qué consulta corresponde usando la última
+pendiente para ese número — funciona bien si solo hay una consulta
+esperando respuesta, pero si hay varias en simultáneo puede confundirse.
+Por eso conviene acostumbrarse a citar siempre el mensaje.
+
+Esto se maneja en memoria (`src/agent/escalation.ts`) y no depende de
+Tokko para nada — las consultas pendientes se descartan solas a las 24
+horas si nadie contesta.
+
 ## 5. Claude (Anthropic)
 
 1. Conseguí una API key en [console.anthropic.com](https://console.anthropic.com)

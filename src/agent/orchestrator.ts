@@ -3,7 +3,8 @@ import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { tokkoClient } from "../tokko/client.js";
 import { sendText } from "../whatsapp/client.js";
-import { agentTools, executeTool, notifyHumans, type AgentContext } from "./tools.js";
+import { agentTools, executeTool, type AgentContext } from "./tools.js";
+import { escalateToHumans } from "./escalation.js";
 import {
   getHistory,
   saveHistory,
@@ -115,12 +116,12 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
     saveHistory(from, messages);
   } catch (error) {
     logger.error("agent.orchestration_failed", { from, error: String(error) });
-    await notifyHumans(
-      `🔔 Falla técnica procesando una consulta\n` +
-        `Cliente: ${name} (${from})\n` +
-        `Mensaje: "${text}"\n` +
-        `Error: ${String(error)}`,
-    ).catch((e) => logger.warn("agent.escalation_failed", { error: String(e) }));
+    await escalateToHumans({
+      customerPhone: from,
+      customerName: name,
+      question: text,
+      reason: `Falla técnica procesando el mensaje: ${String(error)}`,
+    }).catch((e) => logger.warn("agent.escalation_failed", { error: String(e) }));
     await sendText(
       from,
       "Perdón, tuvimos un problema técnico procesando tu consulta. Ya te contactamos a la brevedad.",
@@ -183,10 +184,11 @@ async function runAgentLoop(
   }
 
   logger.warn("agent.max_iterations_reached", { contactId: ctx.contactId });
-  await notifyHumans(
-    `🔔 El agente no pudo resolver una consulta (se quedó dando vueltas)\n` +
-      `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
-      `Mensaje: "${originalText}"`,
-  ).catch((error) => logger.warn("agent.escalation_failed", { error: String(error) }));
+  await escalateToHumans({
+    customerPhone: ctx.customerPhone,
+    customerName: ctx.customerName,
+    question: originalText,
+    reason: "El agente se quedó dando vueltas sin poder cerrar una respuesta.",
+  }).catch((error) => logger.warn("agent.escalation_failed", { error: String(error) }));
   return "Estoy revisando tu consulta con más detalle, te respondo en breve.";
 }
