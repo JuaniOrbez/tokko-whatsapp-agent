@@ -2,7 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { tokkoClient } from "../tokko/client.js";
-import { sendText } from "../whatsapp/client.js";
+import { sendText, sendTemplate } from "../whatsapp/client.js";
+import { getSettings } from "../settings.js";
 import { getAgentTools, executeTool, type AgentContext } from "./tools.js";
 import { escalateToHumans } from "./escalation.js";
 import {
@@ -15,7 +16,7 @@ import {
 
 const anthropic = new Anthropic(); // toma ANTHROPIC_API_KEY del entorno
 
-const SYSTEM_PROMPT = `Sos el asistente de WhatsApp de una inmobiliaria. Respondés
+const SYSTEM_PROMPT_BASE = `Sos el asistente de WhatsApp de una inmobiliaria. Respondés
 consultas usando exclusivamente datos reales de Tokko (herramientas
 search_properties / search_developments / get_property_details) — nunca
 inventes precios, direcciones ni características de una propiedad.
@@ -88,6 +89,36 @@ alguien del equipo sí contestó (vas a ver ese mensaje como tuyo en el
 historial, ya que se integra a la charla), seguí la conversación con esa
 info con normalidad, sin volver a escalar lo mismo.`;
 
+/**
+ * Arma el system prompt completo agregándole el estilo de comunicación
+ * configurado en /admin. No hay matching automático por código: se le pasa
+ * al modelo la lista entera de tonos especiales por propiedad/emprendimiento
+ * y es él quien decide, según de qué habla la conversación, cuál aplicar.
+ */
+function buildSystemPrompt(): string {
+  const style = getSettings().communicationStyle;
+  let extra = "";
+
+  if (style.general.trim()) {
+    extra += `\n\nEstilo de comunicación configurado por la inmobiliaria (además de lo de arriba):\n${style.general.trim()}`;
+  }
+
+  if (style.overrides.length > 0) {
+    const lines = style.overrides
+      .filter((o) => o.match.trim() && o.style.trim())
+      .map((o) => `- ${o.match.trim()}: ${o.style.trim()}`)
+      .join("\n");
+    if (lines) {
+      extra +=
+        `\n\nTonos especiales por propiedad/emprendimiento — si la conversación es sobre ` +
+        `alguno de estos en particular, adaptá el tono según corresponda (si no coincide con ` +
+        `ninguno, usá el estilo general):\n${lines}`;
+    }
+  }
+
+  return SYSTEM_PROMPT_BASE + extra;
+}
+
 const MAX_TOOL_ITERATIONS = 6;
 
 interface IncomingMessage {
@@ -154,7 +185,7 @@ async function runAgentLoop(
     const response = await anthropic.messages.create({
       model: "claude-opus-5",
       max_tokens: 2048,
-      system: SYSTEM_PROMPT,
+      system: buildSystemPrompt(),
       tools: getAgentTools(),
       messages,
       output_config: { effort: "medium" },
@@ -252,4 +283,46 @@ export async function relayHumanReply(customerPhone: string, humanText: string):
 
   await sendText(customerPhone, replyText);
   appendAssistantMessage(customerPhone, replyText);
+}
+
+/**
+ * Inicia una conversación con alguien que todavía no le escribió al agente
+ * (ej. un comercial que atendió una llamada y quiere que el agente haga el
+ * seguimiento por WhatsApp). WhatsApp no permite mandar texto libre en este
+ * caso — exige un Content Template aprobado por Meta (ver
+ * initiateConversationTemplateSid en /admin y docs/SETUP.md). Devuelve un
+ * error legible si falta esa configuración o si Twilio rechaza el envío.
+ */
+export async function initiateConversation(input: {
+  phone: string;
+  customerName: string;
+  reason: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const settings = getSettings();
+  const templateSid = settings.initiateConversationTemplateSid;
+  if (!templateSid) {
+    return {
+      ok: false,
+      error: "Falta configurar el Content SID del template en /admin (sección Iniciar conversación).",
+    };
+  }
+
+  try {
+    await sendTemplate(input.phone, templateSid, { "1": input.customerName, "2": input.reason });
+  } catch (error) {
+    logger.error("agent.initiate_conversation_failed", { phone: input.phone, error: String(error) });
+    return { ok: false, error: String(error) };
+  }
+
+  // Twilio no devuelve el texto ya renderizado del template al mandarlo —
+  // reconstruimos lo que el cliente vio a partir del texto configurado, así
+  // el agente tiene contexto real de lo que ya se le dijo cuando conteste.
+  const templateText =
+    settings.initiateConversationTemplateText ??
+    "Hola {{1}}! Somos de ismo Propiedades. Nos comentaron que estás buscando {{2}}. ¿En qué te podemos ayudar?";
+  const renderedText = templateText.replace("{{1}}", input.customerName).replace("{{2}}", input.reason);
+  appendAssistantMessage(input.phone, renderedText);
+
+  logger.info("agent.conversation_initiated", { phone: input.phone });
+  return { ok: true };
 }

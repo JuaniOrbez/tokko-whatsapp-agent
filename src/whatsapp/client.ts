@@ -29,6 +29,28 @@ export async function sendText(to: string, body: string): Promise<string> {
 }
 
 /**
+ * Manda un Content Template puntual (por su Content SID) con variables —
+ * a diferencia de sendText, no depende de TWILIO_CONTENT_SID global. Se
+ * usa para iniciar una conversación con alguien que todavía no le escribió
+ * al agente (WhatsApp exige un template aprobado por Meta para eso, no se
+ * puede mandar texto libre — ver orchestrator.ts#initiateConversation).
+ */
+export async function sendTemplate(
+  to: string,
+  contentSid: string,
+  variables: Record<string, string>,
+): Promise<string> {
+  logger.info("whatsapp.send_template", { to, contentSid });
+  const message = await client.messages.create({
+    from: config.TWILIO_WHATSAPP_FROM,
+    to: toWhatsAppAddress(to),
+    contentSid,
+    contentVariables: JSON.stringify(variables),
+  });
+  return message.sid;
+}
+
+/**
  * Los MediaUrl que Twilio manda para un mensaje ENTRANTE (api.twilio.com/.../Media/...)
  * requieren autenticación básica para descargarse — a diferencia de un link
  * público (ej. de Drive). Si se reenvían tal cual como mediaUrl de un

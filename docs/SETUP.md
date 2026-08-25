@@ -262,6 +262,44 @@ edita desde el navegador, en caliente, sin tocar la terminal:
    renombrar etapas libremente, no es una lista fija). Al guardar, los
    cambios aplican al toque, sin reiniciar nada.
 
+### Estilo del agente
+
+En la sección "Estilo del agente" hay dos campos:
+
+- **Instrucciones generales**: texto libre que se suma a las instrucciones
+  base del agente (no las reemplaza) — ej. "firmá como Equipo ismo", "evitá
+  emojis".
+- **Tonos especiales por propiedad/emprendimiento**: una lista de "Nombre
+  de propiedad/emprendimiento" → "Instrucciones de tono" (ej. "Torres del
+  Parque" → "tono más formal, resaltar exclusividad"). No hay ningún
+  matching automático por código: se le pasa al agente la lista entera y es
+  él quien decide cuál aplica según de qué habla la conversación (ver
+  `buildSystemPrompt` en `src/agent/orchestrator.ts`).
+
+### Iniciar una conversación (el agente escribe primero)
+
+Por defecto el agente solo responde — no puede escribirle primero a
+alguien que nunca le mandó un mensaje, porque WhatsApp exige un **Content
+Template aprobado por Meta** para eso (no deja mandar texto libre a quien
+no inició la conversación). Para habilitar esto:
+
+1. Creá el template en Twilio (Content Template Builder → nuevo template
+   de texto, categoría **Utility**, con dos variables `{{1}}` (nombre) y
+   `{{2}}` (motivo) — ej. `Hola {{1}}! Somos de ismo Propiedades. Nos
+   comentaron que estás buscando {{2}}. ¿En qué te podemos ayudar?`) y
+   mandalo a aprobación de WhatsApp. **Ojo**: esto probablemente no se
+   apruebe/funcione mientras sigas en el sandbox de Twilio — Meta exige un
+   número de WhatsApp productivo verificado para este tipo de template.
+2. Una vez aprobado, copiá el **Content SID** (`HX...`) y pegalo en
+   `/admin`, sección "Iniciar conversación", junto con el texto exacto del
+   template (con `{{1}}`/`{{2}}` en el mismo orden — Twilio no devuelve el
+   texto ya renderizado al mandar un template, así que este texto es lo
+   que usa el agente para "recordar" qué le dijo al cliente).
+3. Con eso cargado, en la sección "Contactar a un cliente ahora" cualquiera
+   con acceso a `/admin` puede cargar el número, nombre y motivo de un
+   cliente, y el agente le manda el mensaje y sigue la conversación
+   normalmente cuando responda.
+
 Lo que **no** se mueve a `/admin` (queda en `.env`, requiere reiniciar el
 servidor si cambia): las credenciales de Twilio, Tokko, Google y
 Anthropic, y la ruta del archivo de la cuenta de servicio de Google — son

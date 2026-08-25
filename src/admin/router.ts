@@ -1,14 +1,22 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { config } from "../config.js";
-import { getSettings, saveSettings, type AppSettings, type TokkoStage } from "../settings.js";
+import {
+  getSettings,
+  saveSettings,
+  type AppSettings,
+  type TokkoStage,
+  type CommunicationStyleOverride,
+} from "../settings.js";
+import { initiateConversation } from "../agent/orchestrator.js";
 import { logger } from "../logger.js";
 
 export const adminRouter = Router();
 
 // Una fila vacía de más como respaldo si el navegador tuviera JS
-// deshabilitado — normalmente se agregan filas con el botón "+ Agregar
-// etapa" (ver script al final de renderPage), sin límite de cantidad.
+// deshabilitado — normalmente se agregan filas con el botón "+ Agregar"
+// (ver scripts al final de renderPage), sin límite de cantidad.
 const EXTRA_BLANK_STAGE_ROWS = 1;
+const EXTRA_BLANK_STYLE_OVERRIDE_ROWS = 1;
 
 function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
   if (!config.ADMIN_PASSWORD) {
@@ -33,7 +41,9 @@ adminRouter.use("/admin", requireAdminAuth);
 
 adminRouter.get("/admin", (req: Request, res: Response) => {
   const saved = req.query.saved === "1";
-  res.type("html").send(renderPage(getSettings(), saved));
+  const started = req.query.started === "1";
+  const startError = typeof req.query.startError === "string" ? req.query.startError : undefined;
+  res.type("html").send(renderPage(getSettings(), { saved, started, startError }));
 });
 
 // req.body.stageKey/stageLabel/stageId pueden venir como string (si hay una
@@ -69,6 +79,12 @@ adminRouter.post("/admin", (req: Request, res: Response) => {
     }))
     .filter((s) => s.key !== "");
 
+  const overrideMatches = toArray(body.styleOverrideMatch);
+  const overrideStyles = toArray(body.styleOverrideStyle);
+  const overrides: CommunicationStyleOverride[] = overrideMatches
+    .map((match, i) => ({ match: match.trim(), style: (overrideStyles[i] ?? "").trim() }))
+    .filter((o) => o.match !== "" && o.style !== "");
+
   const settings: AppSettings = {
     escalationNumbers,
     zonapropLinksFileName: String(body.zonapropLinksFileName ?? "").trim() || "Links Zonaprop",
@@ -78,11 +94,42 @@ adminRouter.post("/admin", (req: Request, res: Response) => {
       operationIdRent: toNumberOrUndefined(body.operationIdRent as string | undefined),
       stages,
     },
+    communicationStyle: {
+      general: String(body.styleGeneral ?? "").trim(),
+      overrides,
+    },
+    initiateConversationTemplateSid: String(body.initiateTemplateSid ?? "").trim() || undefined,
+    initiateConversationTemplateText: String(body.initiateTemplateText ?? "").trim() || undefined,
   };
 
   saveSettings(settings);
   logger.info("admin.settings_updated");
   res.redirect("/admin?saved=1");
+});
+
+adminRouter.post("/admin/start-conversation", (req: Request, res: Response) => {
+  const body = req.body as Record<string, string>;
+  const phone = (body.startPhone ?? "").trim();
+  const customerName = (body.startName ?? "").trim();
+  const reason = (body.startReason ?? "").trim();
+
+  if (!phone || !customerName || !reason) {
+    res.redirect("/admin?startError=" + encodeURIComponent("Completá número, nombre y motivo."));
+    return;
+  }
+
+  initiateConversation({ phone, customerName, reason })
+    .then((result) => {
+      if (result.ok) {
+        res.redirect("/admin?started=1");
+      } else {
+        res.redirect("/admin?startError=" + encodeURIComponent(result.error ?? "Error desconocido."));
+      }
+    })
+    .catch((error) => {
+      logger.error("admin.start_conversation_failed", { error: String(error) });
+      res.redirect("/admin?startError=" + encodeURIComponent(String(error)));
+    });
 });
 
 function esc(value: string | number | undefined): string {
@@ -118,7 +165,22 @@ function renderNumberRow(value: string): string {
             </div>`;
 }
 
-function renderPage(settings: AppSettings, saved: boolean): string {
+function renderStyleOverrideRow(o: Partial<CommunicationStyleOverride>): string {
+  return `
+              <div class="override-row">
+                <input type="text" name="styleOverrideMatch" value="${esc(o.match)}" placeholder="Nombre de propiedad/emprendimiento">
+                <input type="text" name="styleOverrideStyle" value="${esc(o.style)}" placeholder="Instrucciones de tono">
+              </div>`;
+}
+
+interface PageNotices {
+  saved: boolean;
+  started: boolean;
+  startError?: string;
+}
+
+function renderPage(settings: AppSettings, notices: PageNotices): string {
+  const { saved, started, startError } = notices;
   const stageRows = [
     ...settings.tokko.stages.map(renderStageRow),
     ...Array.from({ length: EXTRA_BLANK_STAGE_ROWS }, () => renderStageRow({})),
@@ -127,6 +189,11 @@ function renderPage(settings: AppSettings, saved: boolean): string {
   const numberRows = [
     ...settings.escalationNumbers.map(renderNumberRow),
     renderNumberRow(""),
+  ].join("\n");
+
+  const overrideRows = [
+    ...settings.communicationStyle.overrides.map(renderStyleOverrideRow),
+    ...Array.from({ length: EXTRA_BLANK_STYLE_OVERRIDE_ROWS }, () => renderStyleOverrideRow({})),
   ].join("\n");
 
   return `<!doctype html>
@@ -174,6 +241,7 @@ function renderPage(settings: AppSettings, saved: boolean): string {
     padding: 11px 16px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem;
     box-shadow: var(--shadow-sm); font-weight: 500;
   }
+  .banner-error { background: #fdecec; border-color: #f3a9a9; color: #a31c1c; }
   form { display: flex; flex-direction: column; gap: 18px; }
   details.section {
     background: var(--card); border: 1px solid var(--border); border-radius: 16px;
@@ -218,6 +286,9 @@ function renderPage(settings: AppSettings, saved: boolean): string {
   .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 16px; }
   @media (max-width: 480px) { .stages { grid-template-columns: 1fr; } }
   .number-rows { display: flex; flex-direction: column; gap: 9px; margin-bottom: 4px; }
+  .override-rows { display: flex; flex-direction: column; gap: 9px; margin-bottom: 4px; }
+  .override-row { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
+  @media (max-width: 480px) { .override-row { grid-template-columns: 1fr; } }
   .stage-rows { display: flex; flex-direction: column; gap: 9px; }
   .stage-row-header {
     display: grid; grid-template-columns: 1fr 1.4fr 90px; gap: 8px;
@@ -253,6 +324,8 @@ function renderPage(settings: AppSettings, saved: boolean): string {
   </header>
   <main>
     ${saved ? '<div class="banner">✓ Guardado correctamente.</div>' : ""}
+    ${started ? '<div class="banner">✓ Conversación iniciada — se mandó el template por WhatsApp.</div>' : ""}
+    ${startError ? `<div class="banner banner-error">✕ No se pudo iniciar la conversación: ${esc(startError)}</div>` : ""}
     <form method="POST" action="/admin">
 
       <details class="section" open>
@@ -308,6 +381,61 @@ function renderPage(settings: AppSettings, saved: boolean): string {
         </div>
       </details>
 
+      <details class="section">
+        <summary><span class="icon">🎙️</span> Estilo del agente<span class="chevron">›</span></summary>
+        <div class="section-body">
+          <div class="field">
+            <label for="styleGeneral">Instrucciones generales de tono y estilo (opcional)</label>
+            <textarea id="styleGeneral" name="styleGeneral" placeholder="Ej: usá menos signos de exclamación, firmá como 'Equipo ismo', evitá emojis">${esc(settings.communicationStyle.general)}</textarea>
+            <div class="hint">Se suma a las instrucciones base del agente (rioplatense, cordial, mensajes cortos) — no las reemplaza.</div>
+          </div>
+          <div class="field">
+            <label>Tonos especiales por propiedad o emprendimiento</label>
+            <div class="override-rows" id="overrideRows">
+              ${overrideRows}
+            </div>
+            <button type="button" class="add-row-btn" id="addOverrideRowBtn">+ Agregar tono especial</button>
+            <div class="hint">Es el agente quien decide cuándo aplica cada uno, según de qué habla la conversación — no hace falta que el nombre sea exacto. Para sacar uno, borrale el nombre de la propiedad/emprendimiento.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary><span class="icon">🚀</span> Iniciar conversación<span class="chevron">›</span></summary>
+        <div class="section-body">
+          <div class="field">
+            <label for="initiateTemplateSid">Content SID del template aprobado (HX...)</label>
+            <input type="text" id="initiateTemplateSid" name="initiateTemplateSid" value="${esc(settings.initiateConversationTemplateSid)}" placeholder="HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+            <div class="hint">Lo conseguís en Twilio → Content Template Builder, una vez que Meta lo aprueba (ver docs/SETUP.md).</div>
+          </div>
+          <div class="field">
+            <label for="initiateTemplateText">Texto del template (tal cual quedó aprobado)</label>
+            <textarea id="initiateTemplateText" name="initiateTemplateText" placeholder="Hola {{1}}! Somos de ismo Propiedades...">${esc(settings.initiateConversationTemplateText)}</textarea>
+            <div class="hint">Usá {{1}} para el nombre y {{2}} para el motivo, en ese orden — tiene que coincidir con lo que aprobaste en Twilio, si no el agente va a "recordar" algo distinto de lo que el cliente recibió.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="section" id="startConversationSection">
+        <summary><span class="icon">💬</span> Contactar a un cliente ahora<span class="chevron">›</span></summary>
+        <div class="section-body">
+          <div class="field">
+            <label for="startPhone">Número de WhatsApp del cliente</label>
+            <input type="text" id="startPhone" name="startPhone" placeholder="+5491122334455">
+          </div>
+          <div class="field">
+            <label for="startName">Nombre del cliente</label>
+            <input type="text" id="startName" name="startName" placeholder="Juan">
+          </div>
+          <div class="field">
+            <label for="startReason">¿Qué está buscando / motivo del contacto?</label>
+            <input type="text" id="startReason" name="startReason" placeholder="un depto de 2 ambientes en Núñez">
+          </div>
+          <button type="submit" formaction="/admin/start-conversation" formmethod="post">Iniciar conversación</button>
+          <div class="hint">Requiere tener cargado el Content SID en la sección "Iniciar conversación" de más arriba, y que el template ya esté aprobado por Meta.</div>
+        </div>
+      </details>
+
       <div class="actions">
         <button type="submit">Guardar cambios</button>
       </div>
@@ -326,6 +454,12 @@ function renderPage(settings: AppSettings, saved: boolean): string {
       <input type="text" name="escalationNumber" placeholder="+5491122334455">
     </div>
   </template>
+  <template id="overrideRowTemplate">
+    <div class="override-row">
+      <input type="text" name="styleOverrideMatch" placeholder="Nombre de propiedad/emprendimiento">
+      <input type="text" name="styleOverrideStyle" placeholder="Instrucciones de tono">
+    </div>
+  </template>
   <script>
     document.getElementById('addStageRowBtn').addEventListener('click', function () {
       var tpl = document.getElementById('stageRowTemplate');
@@ -336,6 +470,11 @@ function renderPage(settings: AppSettings, saved: boolean): string {
       var tpl = document.getElementById('numberRowTemplate');
       var row = tpl.content.cloneNode(true);
       document.getElementById('numberRows').appendChild(row);
+    });
+    document.getElementById('addOverrideRowBtn').addEventListener('click', function () {
+      var tpl = document.getElementById('overrideRowTemplate');
+      var row = tpl.content.cloneNode(true);
+      document.getElementById('overrideRows').appendChild(row);
     });
   </script>
 </body>

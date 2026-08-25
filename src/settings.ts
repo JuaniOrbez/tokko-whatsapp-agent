@@ -13,6 +13,15 @@ export interface TokkoStage {
   tokkoId?: number;
 }
 
+export interface CommunicationStyleOverride {
+  // Nombre (o parte del nombre) de una propiedad/emprendimiento — el
+  // agente decide él mismo si la conversación actual coincide, no hay
+  // matching automático por código (ver orchestrator.ts#buildSystemPrompt).
+  match: string;
+  // Instrucciones de tono/estilo a aplicar cuando coincide.
+  style: string;
+}
+
 /**
  * Configuración de negocio editable en vivo desde /admin (a diferencia de
  * lo que vive en .env, que son credenciales/infra y requieren reiniciar el
@@ -40,6 +49,21 @@ export interface AppSettings {
     // que arma el enum de la herramienta a partir de esta lista).
     stages: TokkoStage[];
   };
+  communicationStyle: {
+    general: string;
+    overrides: CommunicationStyleOverride[];
+  };
+  // Content SID (HX...) del template de WhatsApp aprobado para iniciar
+  // conversaciones (el cliente no escribió primero) — ver
+  // orchestrator.ts#initiateConversation. Sin esto, esa función no funciona.
+  initiateConversationTemplateSid?: string;
+  // Texto del template tal como quedó aprobado en Meta, con {{1}} (nombre)
+  // y {{2}} (motivo) en el mismo orden — Twilio no devuelve el texto ya
+  // renderizado al mandar un template, así que lo necesitamos acá para
+  // poder dejarlo en el historial de la conversación (si no, el agente no
+  // "vería" lo que el cliente recibió). Si editás el template en Twilio,
+  // actualizá este texto también para que no queden desincronizados.
+  initiateConversationTemplateText?: string;
 }
 
 const SETTINGS_PATH = path.resolve(process.cwd(), "data", "settings.json");
@@ -72,6 +96,23 @@ function defaultSettings(): AppSettings {
       operationIdRent: config.TOKKO_OPERATION_ID_RENT,
       stages: defaultStages,
     },
+    communicationStyle: { general: "", overrides: [] },
+    initiateConversationTemplateSid: undefined,
+    initiateConversationTemplateText:
+      "Hola {{1}}! Somos de ismo Propiedades. Nos comentaron que estás buscando {{2}}. ¿En qué te podemos ayudar?",
+  };
+}
+
+// Completa con valores por defecto cualquier campo que falte en lo cargado
+// del disco — así una config guardada antes de agregar un campo nuevo (ej.
+// communicationStyle) no rompe en vez de tirar undefined más adelante.
+function normalize(loaded: Partial<AppSettings>): AppSettings {
+  const defaults = defaultSettings();
+  return {
+    ...defaults,
+    ...loaded,
+    tokko: { ...defaults.tokko, ...loaded.tokko },
+    communicationStyle: { ...defaults.communicationStyle, ...loaded.communicationStyle },
   };
 }
 
@@ -81,7 +122,8 @@ export function getSettings(): AppSettings {
   if (cache) return cache;
   if (fs.existsSync(SETTINGS_PATH)) {
     try {
-      cache = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8")) as AppSettings;
+      const loaded = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8")) as Partial<AppSettings>;
+      cache = normalize(loaded);
       return cache;
     } catch (error) {
       logger.error("settings.load_failed", { error: String(error) });
