@@ -153,6 +153,14 @@ async function runAgentLoop(messages: Anthropic.MessageParam[], ctx: AgentContex
       try {
         content = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, ctx);
       } catch (error) {
+        // Antes esto quedaba solo del lado del modelo (silencioso en la
+        // terminal) — lo logueamos también acá para poder diagnosticar
+        // fallas reales (ej. Drive mal configurado) sin adivinar.
+        logger.error("agent.tool_failed", {
+          tool: toolUse.name,
+          input: toolUse.input,
+          error: String(error),
+        });
         content = JSON.stringify({ error: String(error) });
       }
       toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content });
