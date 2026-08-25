@@ -227,7 +227,7 @@ export async function executeTool(
         id: d.id,
         name: d.name,
         address: d.address ?? d.location?.name,
-        url: d.public_url,
+        url: d.web_url || undefined,
       }));
       return JSON.stringify({ count: summaries.length, developments: summaries });
     }
@@ -237,9 +237,9 @@ export async function executeTool(
       return JSON.stringify({
         id: development.id,
         name: development.name,
-        description: development.description,
+        description: development.description || undefined,
         address: development.address ?? development.location?.name,
-        url: development.public_url,
+        url: development.web_url || undefined,
         photo_count: development.photos?.length ?? 0,
       });
     }

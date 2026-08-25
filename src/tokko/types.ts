@@ -50,9 +50,10 @@ export interface TokkoListResponse<T = TokkoProperty> {
 }
 
 /**
- * Sin confirmar en vivo todavía (a diferencia de TokkoProperty/TokkoContact) —
- * la forma exacta puede variar. Campos optativos a propósito; ajustar según
- * lo que devuelva /development/ real.
+ * Confirmado en vivo contra /development/{id}/ real. OJO: a diferencia de
+ * TokkoProperty, acá el link de la publicación viene en `web_url` (no
+ * `public_url`) — y puede venir vacío ("") si Tokko no lo tiene cargado
+ * para ese emprendimiento en particular, no es necesariamente un bug.
  */
 export interface TokkoDevelopment {
   id: number;
@@ -60,7 +61,7 @@ export interface TokkoDevelopment {
   address?: string;
   location?: TokkoLocation;
   description?: string;
-  public_url?: string;
+  web_url?: string;
   photos?: TokkoPhoto[];
 }
 
