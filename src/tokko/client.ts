@@ -70,10 +70,19 @@ function matchesFilters(property: TokkoProperty, filters: TokkoSearchFilters): b
 
   if (filters.location) {
     const needle = filters.location.trim().toLowerCase();
+    // Incluye también los datos del emprendimiento (development.*): el
+    // nombre comercial de un proyecto (ej. "LA VECINDAD") suele figurar
+    // solo ahí, no en location/address de cada unidad individual — sin
+    // esto, buscar por el nombre del emprendimiento no encontraba ninguna
+    // de sus unidades.
     const haystack = [
       property.location?.name,
       property.location?.full_location,
       property.address,
+      property.development?.name,
+      property.development?.address,
+      property.development?.location?.name,
+      property.development?.location?.full_location,
     ]
       .filter(Boolean)
       .join(" ")
