@@ -15,6 +15,17 @@ export function saveHistory(phone: string, messages: Anthropic.MessageParam[]): 
   sessions.set(phone, messages.slice(-MAX_MESSAGES));
 }
 
+/**
+ * Agrega un mensaje "del asistente" al historial sin pasar por el agente —
+ * usado cuando la respuesta de un humano se reenvía directo al cliente (ver
+ * webhook.ts), para que quede en el contexto de la conversación como si el
+ * agente ya lo hubiera dicho.
+ */
+export function appendAssistantMessage(phone: string, text: string): void {
+  const history = getHistory(phone);
+  saveHistory(phone, [...history, { role: "assistant", content: text }]);
+}
+
 // Evita mandar una "Consulta" nueva a Tokko en cada mensaje mientras el
 // contacto todavía no fue aprobado a mano (ver tokkoClient.submitInquiry).
 // Se pierde al reiniciar el proceso — en el peor caso se manda una consulta

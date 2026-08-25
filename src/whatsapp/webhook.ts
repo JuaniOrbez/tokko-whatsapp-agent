@@ -4,6 +4,7 @@ import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { handleIncomingMessage } from "../agent/orchestrator.js";
 import { isHumanEscalationNumber, resolveHumanReply } from "../agent/escalation.js";
+import { appendAssistantMessage } from "../agent/sessionStore.js";
 import { sendText } from "./client.js";
 
 export const webhookRouter = Router();
@@ -97,6 +98,9 @@ async function handleHumanReply(
     ).catch(() => {});
     return;
   }
-  await sendText(pending.customerPhone, `Te escribe alguien de nuestro equipo:\n\n${text}`);
+  // Se manda tal cual, sin aclarar que respondió un humano — para el
+  // cliente tiene que sentirse como una respuesta más del mismo chat.
+  await sendText(pending.customerPhone, text);
+  appendAssistantMessage(pending.customerPhone, text);
   logger.info("agent.human_reply_relayed", { from, customerPhone: pending.customerPhone });
 }

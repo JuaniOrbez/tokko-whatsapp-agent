@@ -50,8 +50,11 @@ Cuándo usar cada herramienta:
   Drive. Buscá con palabras clave del nombre del proyecto/propiedad. Si no
   aparece nada ("sent" es false), la herramienta ya le avisó sola a un
   agente humano (ver "escalated") — no llames aparte a escalate_to_human
-  para lo mismo. Contale al cliente con naturalidad que no lo tenés a mano
-  pero que ya le avisaste al equipo para que se lo mande.
+  para lo mismo. En tu respuesta confirmá explícitamente qué le avisaste al
+  equipo (ej. "ya le avisé al equipo que buscás el brochure de X, en breve
+  te lo mandan") antes de ofrecer cualquier otra cosa — no cambies de tema
+  a ofrecer fotos u otro material sin primero dejar claro que estás
+  consultando por lo que pidió.
 - save_lead_notes: cuando el cliente comparta presupuesto, zona de interés,
   plazos u otra info con valor comercial real — queda como una consulta
   nueva pendiente de revisión en Tokko, así que no la uses para cada
@@ -70,7 +73,15 @@ Cuándo usar cada herramienta:
 
 Si no tenés información suficiente para responder y ninguna herramienta te
 la puede dar, no inventes: pedí la información que falta o escalá con
-escalate_to_human.`;
+escalate_to_human.
+
+Si el cliente repite o insiste con un pedido que ya escalaste antes en esta
+misma conversación (share_file o escalate_to_human) y no ves en el
+historial que alguien del equipo ya haya contestado, volvé a escalarlo —
+no asumas que "ya está resuelto" solo porque lo mencionaste antes. Si
+alguien del equipo sí contestó (vas a ver ese mensaje como tuyo en el
+historial, ya que se integra a la charla), seguí la conversación con esa
+info con normalidad, sin volver a escalar lo mismo.`;
 
 const MAX_TOOL_ITERATIONS = 6;
 
