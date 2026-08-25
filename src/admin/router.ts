@@ -5,9 +5,10 @@ import { logger } from "../logger.js";
 
 export const adminRouter = Router();
 
-// Filas vacías de más al final de la lista de etapas, para poder agregar
-// etapas nuevas sin necesidad de JS (el usuario completa una fila en blanco).
-const EXTRA_BLANK_STAGE_ROWS = 3;
+// Una fila vacía de más como respaldo si el navegador tuviera JS
+// deshabilitado — normalmente se agregan filas con el botón "+ Agregar
+// etapa" (ver script al final de renderPage), sin límite de cantidad.
+const EXTRA_BLANK_STAGE_ROWS = 1;
 
 function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
   if (!config.ADMIN_PASSWORD) {
@@ -191,6 +192,12 @@ function renderPage(settings: AppSettings, saved: boolean): string {
     color: white; border: none; border-radius: 8px; cursor: pointer; width: 100%;
   }
   button:hover { background: var(--brand-dark); }
+  .add-row-btn {
+    width: auto; padding: 7px 14px; font-size: 0.85rem; font-weight: 500;
+    background: transparent; color: var(--brand); border: 1px solid var(--brand);
+    margin-top: 4px; align-self: flex-start;
+  }
+  .add-row-btn:hover { background: #eaf5ef; }
 </style>
 </head>
 <body>
@@ -245,11 +252,12 @@ function renderPage(settings: AppSettings, saved: boolean): string {
           </div>
           <div class="field">
             <label>Etapas del workflow de Oportunidades</label>
-            <div class="hint">"Clave" es el identificador interno que usa el agente (sin espacios, ej. tomar_accion), "Nombre" es lo que ve el agente para entender qué significa, e "ID Tokko" es el número real de esa etapa en tu cuenta. Para sacar una etapa, borrale la Clave. Las filas vacías de más abajo son para agregar etapas nuevas.</div>
-            <div class="stage-rows">
+            <div class="hint">"Clave" es el identificador interno que usa el agente (sin espacios, ej. tomar_accion), "Nombre" es lo que ve el agente para entender qué significa, e "ID Tokko" es el número real de esa etapa en tu cuenta. Para sacar una etapa, borrale la Clave.</div>
+            <div class="stage-rows" id="stageRows">
               <div class="stage-row-header"><span>Clave</span><span>Nombre</span><span>ID Tokko</span></div>
               ${stageRows}
             </div>
+            <button type="button" class="add-row-btn" id="addStageRowBtn">+ Agregar etapa</button>
           </div>
         </div>
       </details>
@@ -259,6 +267,21 @@ function renderPage(settings: AppSettings, saved: boolean): string {
       </div>
     </form>
   </main>
+
+  <template id="stageRowTemplate">
+    <div class="stage-row">
+      <input type="text" name="stageKey" placeholder="clave_interna">
+      <input type="text" name="stageLabel" placeholder="Nombre visible">
+      <input type="number" name="stageId" placeholder="ID Tokko">
+    </div>
+  </template>
+  <script>
+    document.getElementById('addStageRowBtn').addEventListener('click', function () {
+      var tpl = document.getElementById('stageRowTemplate');
+      var row = tpl.content.cloneNode(true);
+      document.getElementById('stageRows').appendChild(row);
+    });
+  </script>
 </body>
 </html>`;
 }
