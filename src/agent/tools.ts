@@ -161,6 +161,14 @@ export const agentTools: Anthropic.Tool[] = [
   },
 ];
 
+/** Manda `text` a todos los números de HUMAN_ESCALATION_WHATSAPP_NUMBERS. Devuelve false si no hay ninguno configurado. */
+async function notifyHumans(text: string): Promise<boolean> {
+  const numbers = config.HUMAN_ESCALATION_WHATSAPP_NUMBERS;
+  if (!numbers || numbers.length === 0) return false;
+  await Promise.all(numbers.map((number) => sendText(number, text)));
+  return true;
+}
+
 export async function executeTool(
   name: string,
   input: Record<string, unknown>,
@@ -255,9 +263,25 @@ export async function executeTool(
     }
 
     case "share_file": {
-      const files = await findFilesByName(input.query as string);
+      const query = input.query as string;
+      const files = await findFilesByName(query);
       if (files.length === 0) {
-        return JSON.stringify({ sent: false, reason: "No se encontró ningún archivo con ese nombre." });
+        // No está en Drive: avisamos directo a un humano en vez de dejar
+        // colgado al cliente — así lo pueden mandar ellos a mano.
+        const alertText =
+          `🔔 Piden un archivo que no está en Drive\n` +
+          `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
+          `Buscó: "${query}"\n` +
+          `¿Se lo podés mandar vos directamente?`;
+        const escalated = await notifyHumans(alertText).catch((error) => {
+          logger.warn("agent.escalation_failed", { error: String(error) });
+          return false;
+        });
+        return JSON.stringify({
+          sent: false,
+          reason: "No se encontró ningún archivo con ese nombre.",
+          escalated,
+        });
       }
       const file = files[0];
       await sendDocumentByLink(ctx.customerPhone, file.downloadUrl, file.name);
@@ -288,20 +312,19 @@ export async function executeTool(
     }
 
     case "escalate_to_human": {
-      const numbers = config.HUMAN_ESCALATION_WHATSAPP_NUMBERS;
-      if (!numbers || numbers.length === 0) {
+      const question = input.question as string;
+      const alertText =
+        `🔔 Consulta necesita revisión humana\n` +
+        `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
+        `Pregunta: ${question}`;
+      const escalated = await notifyHumans(alertText);
+      if (!escalated) {
         logger.warn("agent.escalation_not_configured", { customerPhone: ctx.customerPhone });
         return JSON.stringify({
           escalated: false,
           reason: "No hay ningún número de escalamiento configurado (HUMAN_ESCALATION_WHATSAPP_NUMBERS).",
         });
       }
-      const question = input.question as string;
-      const alertText =
-        `🔔 Consulta necesita revisión humana\n` +
-        `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
-        `Pregunta: ${question}`;
-      await Promise.all(numbers.map((number) => sendText(number, alertText)));
       logger.info("agent.escalated_to_human", { customerPhone: ctx.customerPhone, question });
       return JSON.stringify({ escalated: true });
     }
