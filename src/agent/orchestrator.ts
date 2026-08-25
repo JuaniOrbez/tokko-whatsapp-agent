@@ -3,7 +3,7 @@ import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { tokkoClient } from "../tokko/client.js";
 import { sendText } from "../whatsapp/client.js";
-import { agentTools, executeTool, type AgentContext } from "./tools.js";
+import { agentTools, executeTool, notifyHumans, type AgentContext } from "./tools.js";
 import {
   getHistory,
   saveHistory,
@@ -103,7 +103,7 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
 
     const messages: Anthropic.MessageParam[] = [...getHistory(from), { role: "user", content: text }];
 
-    const replyText = await runAgentLoop(messages, ctx);
+    const replyText = await runAgentLoop(messages, ctx, text);
 
     if (replyText) {
       await sendText(from, replyText);
@@ -111,6 +111,12 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
     saveHistory(from, messages);
   } catch (error) {
     logger.error("agent.orchestration_failed", { from, error: String(error) });
+    await notifyHumans(
+      `🔔 Falla técnica procesando una consulta\n` +
+        `Cliente: ${name} (${from})\n` +
+        `Mensaje: "${text}"\n` +
+        `Error: ${String(error)}`,
+    ).catch((e) => logger.warn("agent.escalation_failed", { error: String(e) }));
     await sendText(
       from,
       "Perdón, tuvimos un problema técnico procesando tu consulta. Ya te contactamos a la brevedad.",
@@ -118,7 +124,11 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
   }
 }
 
-async function runAgentLoop(messages: Anthropic.MessageParam[], ctx: AgentContext): Promise<string> {
+async function runAgentLoop(
+  messages: Anthropic.MessageParam[],
+  ctx: AgentContext,
+  originalText: string,
+): Promise<string> {
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
     const response = await anthropic.messages.create({
       model: "claude-opus-5",
@@ -169,5 +179,10 @@ async function runAgentLoop(messages: Anthropic.MessageParam[], ctx: AgentContex
   }
 
   logger.warn("agent.max_iterations_reached", { contactId: ctx.contactId });
+  await notifyHumans(
+    `🔔 El agente no pudo resolver una consulta (se quedó dando vueltas)\n` +
+      `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
+      `Mensaje: "${originalText}"`,
+  ).catch((error) => logger.warn("agent.escalation_failed", { error: String(error) }));
   return "Estoy revisando tu consulta con más detalle, te respondo en breve.";
 }

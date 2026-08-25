@@ -162,7 +162,7 @@ export const agentTools: Anthropic.Tool[] = [
 ];
 
 /** Manda `text` a todos los números de HUMAN_ESCALATION_WHATSAPP_NUMBERS. Devuelve false si no hay ninguno configurado. */
-async function notifyHumans(text: string): Promise<boolean> {
+export async function notifyHumans(text: string): Promise<boolean> {
   const numbers = config.HUMAN_ESCALATION_WHATSAPP_NUMBERS;
   if (!numbers || numbers.length === 0) return false;
   await Promise.all(numbers.map((number) => sendText(number, text)));
