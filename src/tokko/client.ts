@@ -169,6 +169,11 @@ class TokkoClient {
     return this.request<TokkoProperty>("GET", ENDPOINTS.propertyDetail(id));
   }
 
+  /** Detalle completo de un emprendimiento (descripción, fotos, url). Misma convención que getProperty. */
+  async getDevelopment(id: number | string): Promise<TokkoDevelopment> {
+    return this.request<TokkoDevelopment>("GET", ENDPOINTS.developmentDetail(id));
+  }
+
   /**
    * Busca emprendimientos por nombre comercial o dirección. Sigue la misma
    * convención de listado paginado que `/property/`, pero `/development/`

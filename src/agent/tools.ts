@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { tokkoClient } from "../tokko/client.js";
 import { findFilesByName } from "../drive/client.js";
-import { sendDocumentByLink } from "../whatsapp/client.js";
+import { sendDocumentByLink, sendText } from "../whatsapp/client.js";
 import { logger } from "../logger.js";
 import { config, type OpportunityStageKey } from "../config.js";
 
@@ -52,6 +52,20 @@ export const agentTools: Anthropic.Tool[] = [
         query: { type: "string", description: "Nombre del emprendimiento o parte de la dirección." },
       },
       required: ["query"],
+    },
+  },
+  {
+    name: "get_development_details",
+    description:
+      "Trae el detalle completo de un emprendimiento por ID: descripción, dirección/ubicación, " +
+      "link de la publicación y cantidad de fotos. Usala cuando el cliente pida más información, " +
+      "la descripción, o el link de un emprendimiento que ya identificaste con search_developments.",
+    input_schema: {
+      type: "object",
+      properties: {
+        development_id: { type: "number" },
+      },
+      required: ["development_id"],
     },
   },
   {
@@ -127,6 +141,24 @@ export const agentTools: Anthropic.Tool[] = [
       required: ["note"],
     },
   },
+  {
+    name: "escalate_to_human",
+    description:
+      "Avisa por WhatsApp a un agente humano del equipo que este cliente necesita ayuda con algo " +
+      "que vos no podés resolver con los datos disponibles (Tokko/Drive no tienen la info, pedido " +
+      "fuera de lo habitual, cliente insistente, etc.). Usala solo cuando de verdad no sepas la " +
+      "respuesta — no reemplaza a save_lead_notes ni se usa para cada consulta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        question: {
+          type: "string",
+          description: "La pregunta o pedido concreto del cliente que necesita revisión humana.",
+        },
+      },
+      required: ["question"],
+    },
+  },
 ];
 
 export async function executeTool(
@@ -192,6 +224,18 @@ export async function executeTool(
       return JSON.stringify({ count: summaries.length, developments: summaries });
     }
 
+    case "get_development_details": {
+      const development = await tokkoClient.getDevelopment(input.development_id as number);
+      return JSON.stringify({
+        id: development.id,
+        name: development.name,
+        description: development.description,
+        address: development.address ?? development.location?.name,
+        url: development.public_url,
+        photo_count: development.photos?.length ?? 0,
+      });
+    }
+
     case "get_property_details": {
       const property = await tokkoClient.getProperty(input.property_id as number);
       return JSON.stringify({
@@ -241,6 +285,25 @@ export async function executeTool(
         tags: ["WhatsApp", "Seguimiento"],
       });
       return JSON.stringify({ saved: true, note: "Quedó como una nueva consulta pendiente en Tokko." });
+    }
+
+    case "escalate_to_human": {
+      const numbers = config.HUMAN_ESCALATION_WHATSAPP_NUMBERS;
+      if (!numbers || numbers.length === 0) {
+        logger.warn("agent.escalation_not_configured", { customerPhone: ctx.customerPhone });
+        return JSON.stringify({
+          escalated: false,
+          reason: "No hay ningún número de escalamiento configurado (HUMAN_ESCALATION_WHATSAPP_NUMBERS).",
+        });
+      }
+      const question = input.question as string;
+      const alertText =
+        `🔔 Consulta necesita revisión humana\n` +
+        `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
+        `Pregunta: ${question}`;
+      await Promise.all(numbers.map((number) => sendText(number, alertText)));
+      logger.info("agent.escalated_to_human", { customerPhone: ctx.customerPhone, question });
+      return JSON.stringify({ escalated: true });
     }
 
     default:

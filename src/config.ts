@@ -53,6 +53,25 @@ const envSchema = z.object({
   GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
 
   ANTHROPIC_API_KEY: z.string().optional(),
+
+  // Número(s) de WhatsApp de agentes humanos a los que se les avisa cuando
+  // el agente no puede resolver una consulta (ver escalate_to_human en
+  // tools.ts). Formato E.164 sin el prefijo "whatsapp:" (ej. "+5491122334455"),
+  // separados por coma si son varios. WhatsApp Business API no permite
+  // mandar mensajes a un grupo por API — por eso son números individuales,
+  // no un grupo (ver docs/SETUP.md).
+  HUMAN_ESCALATION_WHATSAPP_NUMBERS: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z
+      .string()
+      .transform((v) =>
+        v
+          .split(",")
+          .map((n) => n.trim())
+          .filter(Boolean),
+      )
+      .optional(),
+  ),
 });
 
 function loadConfig() {

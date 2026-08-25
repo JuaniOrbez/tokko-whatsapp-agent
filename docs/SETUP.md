@@ -164,7 +164,28 @@ ver" al momento de enviarlos — si preferís no hacer eso (por ejemplo,
 archivos confidenciales), hay que cambiar `ensurePublicLink` en
 `src/drive/client.ts` por otro mecanismo de distribución.
 
-## 4. Claude (Anthropic)
+## 4. Escalamiento a un humano
+
+El agente tiene una herramienta (`escalate_to_human`) para avisarle a
+alguien del equipo por WhatsApp cuando no puede resolver una consulta. Es
+un mensaje saliente más, así que usa el mismo `TWILIO_WHATSAPP_FROM` que ya
+configuraste.
+
+1. En `.env`, completá `HUMAN_ESCALATION_WHATSAPP_NUMBERS` con el/los
+   número/s del equipo en formato E.164 (ej. `+5491122334455`), separados
+   por coma si son varios.
+2. **No es un grupo de WhatsApp**: la WhatsApp Business API (ni vía Twilio
+   ni directo con Meta) permite mandar mensajes a un grupo por API — solo a
+   números individuales, uno por uno. Si querés que llegue a varias
+   personas, agregalas todas separadas por coma y cada una recibe el
+   mensaje por separado.
+3. **Mientras estés en el sandbox de Twilio**: cada número que quieras que
+   reciba estos avisos tiene que sumarse al sandbox igual que hiciste vos
+   (mandarle `join <palabra-clave>` al número del sandbox desde ese
+   WhatsApp) — si no, Twilio no le va a poder mandar el mensaje. Esto deja
+   de ser necesario una vez que se pase a un número de WhatsApp productivo.
+
+## 5. Claude (Anthropic)
 
 1. Conseguí una API key en [console.anthropic.com](https://console.anthropic.com)
    → `ANTHROPIC_API_KEY`.

@@ -36,8 +36,15 @@ Cuándo usar cada herramienta:
   priorizando la ubicación del emprendimiento (más confiable) por sobre la
   de la unidad individual — usá ese valor tal cual te lo devuelve la
   herramienta, no lo cuestiones ni lo compares con otra fuente.
-- share_file: cuando pidan fotos, planos, folleto o ficha de una propiedad
-  y exista un archivo relacionado en Drive.
+- get_development_details: después de ubicar un emprendimiento con
+  search_developments, usala si el cliente pide más info, la descripción o
+  el link ("url") de la publicación — pasale ese link tal cual, no lo
+  inventes ni lo armes a mano.
+- share_file: cuando pidan fotos, planos, brochure/folleto o ficha (de una
+  propiedad o de un emprendimiento) y exista un archivo relacionado en
+  Drive. Buscá con palabras clave del nombre del proyecto/propiedad. Si no
+  aparece nada, decilo con naturalidad, no insistas ni inventes que lo
+  mandaste.
 - save_lead_notes: cuando el cliente comparta presupuesto, zona de interés,
   plazos u otra info con valor comercial real — queda como una consulta
   nueva pendiente de revisión en Tokko, así que no la uses para cada
@@ -47,9 +54,16 @@ Cuándo usar cada herramienta:
   significado de cada etapa). Puede no tener efecto si el contacto todavía
   no fue aprobado del lado humano — no pasa nada si falla, seguí la
   conversación con normalidad.
+- escalate_to_human: cuando el cliente pida algo que ninguna herramienta te
+  puede resolver (un dato que no está en Tokko/Drive, una condición
+  comercial particular, reclamo, o simplemente no sabés la respuesta),
+  usala para avisarle a un agente humano y decile al cliente que en breve
+  lo contacta alguien del equipo. No es lo mismo que save_lead_notes (esa
+  es para guardar info comercial, no para pedir ayuda).
 
-Si no tenés información suficiente para responder, pedí la información que
-falta en vez de asumir.`;
+Si no tenés información suficiente para responder y ninguna herramienta te
+la puede dar, no inventes: pedí la información que falta o escalá con
+escalate_to_human.`;
 
 const MAX_TOOL_ITERATIONS = 6;
 
