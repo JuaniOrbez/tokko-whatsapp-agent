@@ -1,4 +1,4 @@
-import { config, type OpportunityStageKey } from "../config.js";
+import { config } from "../config.js";
 import { getSettings } from "../settings.js";
 import { logger } from "../logger.js";
 import type {
@@ -246,15 +246,14 @@ class TokkoClient {
 
   /**
    * Mueve al contacto a la etapa indicada del workflow de Oportunidades,
-   * actualizando su campo `opportunity_status`. Requiere haber completado
-   * el ID real de esa etapa en .env (TOKKO_STAGE_*) — confirmados en tu
-   * cuenta: tomar_accion=344783 (estado por defecto de todo contacto
-   * nuevo), cerrado=344780. El resto hay que buscarlos (ver docs/SETUP.md).
+   * actualizando su campo `opportunity_status`. `stageKey` es la `key` de
+   * una etapa configurada en /admin (ver src/settings.ts#TokkoStage) — la
+   * lista de etapas es libre, no un enum fijo.
    * NO FUNCIONA hoy (ver comentario arriba del archivo) — queda por si
    * Tokko habilita escritura sobre /contact/{id}/ más adelante.
    */
-  async updateContactStage(contactId: number, stageKey: OpportunityStageKey): Promise<void> {
-    const stageId = getSettings().tokko.stages[stageKey];
+  async updateContactStage(contactId: number, stageKey: string): Promise<void> {
+    const stageId = getSettings().tokko.stages.find((s) => s.key === stageKey)?.tokkoId;
     if (!stageId) {
       logger.warn("tokko.stage_not_configured", { stageKey });
       return;

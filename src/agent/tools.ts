@@ -3,7 +3,6 @@ import { tokkoClient } from "../tokko/client.js";
 import { findFilesByName, findZonapropLink } from "../drive/client.js";
 import { sendDocumentByLink } from "../whatsapp/client.js";
 import { logger } from "../logger.js";
-import { type OpportunityStageKey } from "../config.js";
 import { getSettings } from "../settings.js";
 import { escalateToHumans } from "./escalation.js";
 
@@ -17,7 +16,37 @@ export interface AgentContext {
   contactId: number | null;
 }
 
-export const agentTools: Anthropic.Tool[] = [
+/**
+ * Arma la herramienta update_opportunity_stage a partir de las etapas
+ * configuradas en /admin — la lista es libre (se pueden agregar/sacar
+ * etapas ahí), así que el enum/descripción no puede ser estático.
+ */
+function buildUpdateStageTool(): Anthropic.Tool {
+  const stages = getSettings().tokko.stages.filter((s) => s.key && s.tokkoId !== undefined);
+  const enumValues = stages.map((s) => s.key);
+  const description = stages.length > 0 ? stages.map((s) => `${s.key}: ${s.label}`).join(". ") : undefined;
+
+  return {
+    name: "update_opportunity_stage",
+    description:
+      "Actualiza la etapa del contacto en el workflow de Oportunidades de Tokko. Usala cuando " +
+      "la conversación deje claro un cambio real de etapa — no la uses en cada mensaje.",
+    input_schema: {
+      type: "object",
+      properties: {
+        stage: {
+          type: "string",
+          ...(enumValues.length > 0 ? { enum: enumValues } : {}),
+          description: description ?? "No hay ninguna etapa configurada todavía (ver /admin).",
+        },
+        reason: { type: "string", description: "Motivo breve del cambio de etapa." },
+      },
+      required: ["stage"],
+    },
+  };
+}
+
+const STATIC_TOOLS_BEFORE_STAGE: Anthropic.Tool[] = [
   {
     name: "search_properties",
     description:
@@ -110,40 +139,9 @@ export const agentTools: Anthropic.Tool[] = [
       required: ["query"],
     },
   },
-  {
-    name: "update_opportunity_stage",
-    description:
-      "Actualiza la etapa del contacto en el workflow de Oportunidades de Tokko. Usala cuando " +
-      "la conversación deje claro un cambio real de etapa — no la uses en cada mensaje.",
-    input_schema: {
-      type: "object",
-      properties: {
-        stage: {
-          type: "string",
-          enum: [
-            "aun_no_contactados",
-            "sin_seguimiento",
-            "contactar",
-            "primer_contacto",
-            "volver_a_contactar",
-            "evolucionando",
-            "tomar_accion",
-            "congelado",
-            "cerrado",
-          ],
-          description:
-            "aun_no_contactados: todavía nadie lo contactó. sin_seguimiento: sin actividad " +
-            "reciente. contactar: hay que contactarlo (pendiente). primer_contacto: ya se hizo " +
-            "el primer contacto. volver_a_contactar: hay que retomar el contacto. evolucionando: " +
-            "la negociación está avanzando. tomar_accion: requiere una acción del agente humano " +
-            "(estado por defecto de contactos nuevos). congelado: en pausa por ahora. cerrado: " +
-            "el negocio se cerró o se descartó definitivamente.",
-        },
-        reason: { type: "string", description: "Motivo breve del cambio de etapa." },
-      },
-      required: ["stage"],
-    },
-  },
+];
+
+const STATIC_TOOLS_AFTER_STAGE: Anthropic.Tool[] = [
   {
     name: "save_lead_notes",
     description:
@@ -178,6 +176,10 @@ export const agentTools: Anthropic.Tool[] = [
     },
   },
 ];
+
+export function getAgentTools(): Anthropic.Tool[] {
+  return [...STATIC_TOOLS_BEFORE_STAGE, buildUpdateStageTool(), ...STATIC_TOOLS_AFTER_STAGE];
+}
 
 export async function executeTool(
   name: string,
@@ -335,7 +337,7 @@ export async function executeTool(
           reason: "Todavía no hay un contacto confirmado en Tokko (la consulta está pendiente de aprobación).",
         });
       }
-      const stage = input.stage as OpportunityStageKey;
+      const stage = input.stage as string;
       await tokkoClient.updateContactStage(ctx.contactId, stage);
       logger.info("agent.stage_updated", { contactId: ctx.contactId, stage, reason: input.reason });
       return JSON.stringify({ updated: true, stage });

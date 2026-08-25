@@ -142,14 +142,16 @@ de Meta). Ahí se actualiza `TWILIO_WHATSAPP_FROM` con el número real.
    `operations[].operation_id`. Estos IDs se cargan desde el panel
    **`/admin`** (sección "Tokko — operaciones"), no en `.env` — si los
    dejás vacíos, la búsqueda simplemente no filtra por tipo de operación.
-6. **Etapas del workflow de Oportunidades**: confirmadas en vivo contra el
-   panel de Oportunidades. Se cargan también desde **`/admin`** (sección
-   "Tokko — etapas de Oportunidades"): Aun no fueron Contactados, Sin
-   Seguimiento, Contactar, Primer Contacto hecho, Volver a Contactar,
-   Evolucionando, Tomar Accion (estado por defecto de todo contacto nuevo),
-   Congelado y Cerrado. Si tu cuenta tiene etapas distintas a estas, repetí
-   el proceso: entrá a un contacto de prueba en el panel, cambiale el
-   estado, y pedí `/contact/{id}/?key=...&format=json` para leer el `id` de
+6. **Etapas del workflow de Oportunidades**: se cargan desde **`/admin`**
+   (sección "Tokko" → "Etapas del workflow de Oportunidades") — es una
+   lista libre, no fija: por cada etapa cargás una **Clave** (identificador
+   interno que usa el agente, sin espacios, ej. `tomar_accion`), un
+   **Nombre** (lo que ve el agente para entender qué significa) y el **ID
+   Tokko** real de esa cuenta. Hay filas vacías de más al final para
+   agregar etapas nuevas, y para sacar una alcanza con borrarle la Clave.
+   Para conseguir el ID real de cada etapa: entrá a un contacto de prueba
+   en el panel de Tokko, cambiale el estado, y pedí
+   `/contact/{id}/?key=...&format=json` para leer el `id` de
    `opportunity_status` en cada paso.
 
 ## 3. Google Drive (cuenta de servicio)
@@ -254,10 +256,11 @@ edita desde el navegador, en caliente, sin tocar la terminal:
    dominio + `/admin` si ya lo tenés desplegado). El navegador te va a
    pedir usuario y contraseña: usuario `admin`, contraseña la que pusiste
    en `ADMIN_PASSWORD`.
-3. Ahí se edita: los números de escalamiento, el nombre del archivo de
-   links de Zonaprop, y los IDs de Tokko (operación venta/alquiler y las 9
-   etapas de Oportunidades). Al guardar, los cambios aplican al toque, sin
-   reiniciar nada.
+3. Ahí se edita: los números de escalamiento, la carpeta y el archivo de
+   links de Zonaprop en Drive, y los IDs de Tokko (operación venta/alquiler
+   y las etapas del workflow de Oportunidades — podés agregar, sacar o
+   renombrar etapas libremente, no es una lista fija). Al guardar, los
+   cambios aplican al toque, sin reiniciar nada.
 
 Lo que **no** se mueve a `/admin` (queda en `.env`, requiere reiniciar el
 servidor si cambia): las credenciales de Twilio, Tokko, Google y

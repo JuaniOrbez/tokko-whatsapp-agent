@@ -3,7 +3,7 @@ import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { tokkoClient } from "../tokko/client.js";
 import { sendText } from "../whatsapp/client.js";
-import { agentTools, executeTool, type AgentContext } from "./tools.js";
+import { getAgentTools, executeTool, type AgentContext } from "./tools.js";
 import { escalateToHumans } from "./escalation.js";
 import {
   getHistory,
@@ -155,7 +155,7 @@ async function runAgentLoop(
       model: "claude-opus-5",
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
-      tools: agentTools,
+      tools: getAgentTools(),
       messages,
       output_config: { effort: "medium" },
     });

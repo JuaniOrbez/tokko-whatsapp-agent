@@ -32,8 +32,9 @@ const envSchema = z.object({
   TOKKO_LANG: z.string().default("es_ar"),
 
   // IDs reales de "opportunity_status" en tu cuenta (Oportunidades > Configuración
-  // de oportunidades). Son específicos de cada cuenta de Tokko — hay que
-  // completarlos en .env, no acá (ver docs/SETUP.md).
+  // de oportunidades). Ya NO se editan acá — son solo la semilla inicial
+  // que usa settings.ts la primera vez que arranca el servidor; después de
+  // eso, las etapas (incluidas nuevas que agregues) se manejan desde /admin.
   TOKKO_STAGE_AUN_NO_CONTACTADOS: z.coerce.number().optional(),
   TOKKO_STAGE_SIN_SEGUIMIENTO: z.coerce.number().optional(),
   TOKKO_STAGE_CONTACTAR: z.coerce.number().optional(),
@@ -92,20 +93,3 @@ function loadConfig() {
 }
 
 export const config = loadConfig();
-
-// Mapea claves semánticas de etapa a los IDs reales de "opportunity_status"
-// configurados en Tokko. Son específicos de cada cuenta: hay que
-// completarlos en .env (ver docs/SETUP.md).
-export const OPPORTUNITY_STAGES = {
-  aun_no_contactados: config.TOKKO_STAGE_AUN_NO_CONTACTADOS,
-  sin_seguimiento: config.TOKKO_STAGE_SIN_SEGUIMIENTO,
-  contactar: config.TOKKO_STAGE_CONTACTAR,
-  primer_contacto: config.TOKKO_STAGE_PRIMER_CONTACTO,
-  volver_a_contactar: config.TOKKO_STAGE_VOLVER_A_CONTACTAR,
-  evolucionando: config.TOKKO_STAGE_EVOLUCIONANDO,
-  tomar_accion: config.TOKKO_STAGE_TOMAR_ACCION,
-  congelado: config.TOKKO_STAGE_CONGELADO,
-  cerrado: config.TOKKO_STAGE_CERRADO,
-} as const;
-
-export type OpportunityStageKey = keyof typeof OPPORTUNITY_STAGES;

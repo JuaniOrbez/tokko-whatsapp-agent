@@ -1,24 +1,13 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { config } from "../config.js";
-import { getSettings, saveSettings, type AppSettings } from "../settings.js";
+import { getSettings, saveSettings, type AppSettings, type TokkoStage } from "../settings.js";
 import { logger } from "../logger.js";
-import type { OpportunityStageKey } from "../config.js";
 
 export const adminRouter = Router();
 
-const STAGE_LABELS: Record<OpportunityStageKey, string> = {
-  aun_no_contactados: "Aún no fueron contactados",
-  sin_seguimiento: "Sin seguimiento",
-  contactar: "Contactar",
-  primer_contacto: "Primer contacto hecho",
-  volver_a_contactar: "Volver a contactar",
-  evolucionando: "Evolucionando",
-  tomar_accion: "Tomar acción (default de contactos nuevos)",
-  congelado: "Congelado",
-  cerrado: "Cerrado",
-};
-
-const STAGE_KEYS = Object.keys(STAGE_LABELS) as OpportunityStageKey[];
+// Filas vacías de más al final de la lista de etapas, para poder agregar
+// etapas nuevas sin necesidad de JS (el usuario completa una fila en blanco).
+const EXTRA_BLANK_STAGE_ROWS = 3;
 
 function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
   if (!config.ADMIN_PASSWORD) {
@@ -46,10 +35,19 @@ adminRouter.get("/admin", (req: Request, res: Response) => {
   res.type("html").send(renderPage(getSettings(), saved));
 });
 
-adminRouter.post("/admin", (req: Request, res: Response) => {
-  const body = req.body as Record<string, string>;
+// req.body.stageKey/stageLabel/stageId pueden venir como string (si hay una
+// sola fila) o array (si hay varias) — el parser de express con
+// extended:false colecciona los campos repetidos así.
+function toArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value as string[];
+  if (typeof value === "string") return [value];
+  return [];
+}
 
-  const escalationNumbers = (body.escalationNumbers ?? "")
+adminRouter.post("/admin", (req: Request, res: Response) => {
+  const body = req.body as Record<string, unknown>;
+
+  const escalationNumbers = String(body.escalationNumbers ?? "")
     .split("\n")
     .map((n) => n.trim())
     .filter(Boolean);
@@ -60,18 +58,24 @@ adminRouter.post("/admin", (req: Request, res: Response) => {
     return Number.isFinite(n) ? n : undefined;
   };
 
-  const stages = {} as Record<OpportunityStageKey, number | undefined>;
-  for (const key of STAGE_KEYS) {
-    stages[key] = toNumberOrUndefined(body[`stage_${key}`]);
-  }
+  const stageKeys = toArray(body.stageKey);
+  const stageLabels = toArray(body.stageLabel);
+  const stageIds = toArray(body.stageId);
+  const stages: TokkoStage[] = stageKeys
+    .map((key, i) => ({
+      key: key.trim(),
+      label: (stageLabels[i] ?? "").trim(),
+      tokkoId: toNumberOrUndefined(stageIds[i]),
+    }))
+    .filter((s) => s.key !== "");
 
   const settings: AppSettings = {
     escalationNumbers,
-    zonapropLinksFileName: (body.zonapropLinksFileName ?? "").trim() || "Links Zonaprop",
-    driveFolderId: (body.driveFolderId ?? "").trim() || undefined,
+    zonapropLinksFileName: String(body.zonapropLinksFileName ?? "").trim() || "Links Zonaprop",
+    driveFolderId: String(body.driveFolderId ?? "").trim() || undefined,
     tokko: {
-      operationIdSale: toNumberOrUndefined(body.operationIdSale),
-      operationIdRent: toNumberOrUndefined(body.operationIdRent),
+      operationIdSale: toNumberOrUndefined(body.operationIdSale as string | undefined),
+      operationIdRent: toNumberOrUndefined(body.operationIdRent as string | undefined),
       stages,
     },
   };
@@ -98,14 +102,20 @@ function esc(value: string | number | undefined): string {
   });
 }
 
+function renderStageRow(stage: Partial<TokkoStage>): string {
+  return `
+              <div class="stage-row">
+                <input type="text" name="stageKey" value="${esc(stage.key)}" placeholder="clave_interna">
+                <input type="text" name="stageLabel" value="${esc(stage.label)}" placeholder="Nombre visible">
+                <input type="number" name="stageId" value="${esc(stage.tokkoId)}" placeholder="ID Tokko">
+              </div>`;
+}
+
 function renderPage(settings: AppSettings, saved: boolean): string {
-  const stageInputs = STAGE_KEYS.map(
-    (key) => `
-        <div class="field">
-          <label for="stage_${key}">${esc(STAGE_LABELS[key])}</label>
-          <input type="number" id="stage_${key}" name="stage_${key}" value="${esc(settings.tokko.stages[key])}" placeholder="ID en Tokko">
-        </div>`,
-  ).join("\n");
+  const stageRows = [
+    ...settings.tokko.stages.map(renderStageRow),
+    ...Array.from({ length: EXTRA_BLANK_STAGE_ROWS }, () => renderStageRow({})),
+  ].join("\n");
 
   return `<!doctype html>
 <html lang="es">
@@ -171,6 +181,10 @@ function renderPage(settings: AppSettings, saved: boolean): string {
   .hint { font-size: 0.8rem; color: var(--text-muted); margin-top: 5px; line-height: 1.4; }
   .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
   @media (max-width: 480px) { .stages { grid-template-columns: 1fr; } }
+  .stage-rows { display: flex; flex-direction: column; gap: 8px; }
+  .stage-row-header { display: grid; grid-template-columns: 1fr 1.4fr 90px; gap: 8px; font-size: 0.78rem; color: var(--text-muted); padding: 0 2px; }
+  .stage-row { display: grid; grid-template-columns: 1fr 1.4fr 90px; gap: 8px; }
+  @media (max-width: 480px) { .stage-row, .stage-row-header { grid-template-columns: 1fr; } }
   .actions { position: sticky; bottom: 0; padding-top: 4px; }
   button {
     padding: 11px 22px; font-size: 0.95rem; font-weight: 600; background: var(--brand);
@@ -231,8 +245,10 @@ function renderPage(settings: AppSettings, saved: boolean): string {
           </div>
           <div class="field">
             <label>Etapas del workflow de Oportunidades</label>
-            <div class="stages">
-              ${stageInputs}
+            <div class="hint">"Clave" es el identificador interno que usa el agente (sin espacios, ej. tomar_accion), "Nombre" es lo que ve el agente para entender qué significa, e "ID Tokko" es el número real de esa etapa en tu cuenta. Para sacar una etapa, borrale la Clave. Las filas vacías de más abajo son para agregar etapas nuevas.</div>
+            <div class="stage-rows">
+              <div class="stage-row-header"><span>Clave</span><span>Nombre</span><span>ID Tokko</span></div>
+              ${stageRows}
             </div>
           </div>
         </div>
