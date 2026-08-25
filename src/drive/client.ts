@@ -67,14 +67,32 @@ export async function findZonapropLink(query: string): Promise<string | null> {
   // por accidente un archivo que es solo para uso interno del agente.
   const list = await drive.files.list({
     q: `trashed = false and name contains '${escapeForDriveQuery(ZONAPROP_LINKS_FILE_NAME)}'`,
-    fields: "files(id)",
+    fields: "files(id, mimeType)",
     pageSize: 1,
   });
-  const fileId = list.data.files?.[0]?.id;
-  if (!fileId) return null;
+  const file = list.data.files?.[0];
+  if (!file?.id) return null;
 
-  const res = await drive.files.get({ fileId, alt: "media" }, { responseType: "text" });
-  const content = res.data as unknown as string;
+  // Un Google Doc/Sheet nativo no se puede descargar con alt=media (da 403
+  // "Only files with binary content..."), hay que exportarlo a texto plano.
+  // El mimeType de exportación soportado difiere entre Doc y Sheet.
+  let content: string;
+  if (file.mimeType === "application/vnd.google-apps.spreadsheet") {
+    const res = await drive.files.export(
+      { fileId: file.id, mimeType: "text/csv" },
+      { responseType: "text" },
+    );
+    content = res.data as unknown as string;
+  } else if (file.mimeType?.startsWith("application/vnd.google-apps")) {
+    const res = await drive.files.export(
+      { fileId: file.id, mimeType: "text/plain" },
+      { responseType: "text" },
+    );
+    content = res.data as unknown as string;
+  } else {
+    const res = await drive.files.get({ fileId: file.id, alt: "media" }, { responseType: "text" });
+    content = res.data as unknown as string;
+  }
 
   const needle = query.trim().toLowerCase();
   for (const line of content.split("\n")) {
