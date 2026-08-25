@@ -264,25 +264,47 @@ export async function executeTool(
 
     case "share_file": {
       const query = input.query as string;
-      const files = await findFilesByName(query);
-      if (files.length === 0) {
-        // No está en Drive: avisamos directo a un humano en vez de dejar
-        // colgado al cliente — así lo pueden mandar ellos a mano.
+
+      // Escala siempre que share_file no pueda entregar el archivo — sea
+      // porque no está en Drive, o porque Drive falló técnicamente (ej. mal
+      // configurado). No depende de que el modelo "decida" escalar: eso
+      // resultó no ser confiable (a veces el modelo no llamaba a
+      // escalate_to_human después de un error), así que queda garantizado acá.
+      const escalate = async (reason: string) => {
         const alertText =
-          `🔔 Piden un archivo que no está en Drive\n` +
+          `🔔 No se pudo mandar un archivo pedido por WhatsApp\n` +
           `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
           `Buscó: "${query}"\n` +
+          `Motivo: ${reason}\n` +
           `¿Se lo podés mandar vos directamente?`;
-        const escalated = await notifyHumans(alertText).catch((error) => {
+        return notifyHumans(alertText).catch((error) => {
           logger.warn("agent.escalation_failed", { error: String(error) });
           return false;
         });
+      };
+
+      let files;
+      try {
+        files = await findFilesByName(query);
+      } catch (error) {
+        logger.error("drive.search_failed", { query, error: String(error) });
+        const escalated = await escalate("Falla técnica buscando en Drive.");
+        return JSON.stringify({
+          sent: false,
+          reason: "Hubo un problema técnico buscando el archivo.",
+          escalated,
+        });
+      }
+
+      if (files.length === 0) {
+        const escalated = await escalate("No está en Drive.");
         return JSON.stringify({
           sent: false,
           reason: "No se encontró ningún archivo con ese nombre.",
           escalated,
         });
       }
+
       const file = files[0];
       await sendDocumentByLink(ctx.customerPhone, file.downloadUrl, file.name);
       return JSON.stringify({ sent: true, file: file.name });
