@@ -155,7 +155,10 @@ de Meta). Ahí se actualiza `TWILIO_WHATSAPP_FROM` con el número real.
    o donde prefieras, y apuntá `GOOGLE_SERVICE_ACCOUNT_FILE` a esa ruta.
 4. En Google Drive, **compartí la carpeta** que contiene los folletos/planos
    con el email de la cuenta de servicio (algo como
-   `nombre@proyecto.iam.gserviceaccount.com`), con permiso de **Lector**.
+   `nombre@proyecto.iam.gserviceaccount.com`), con permiso de **Editor** (no
+   alcanza con Lector: `ensurePublicLink` en `src/drive/client.ts` necesita
+   poder cambiar los permisos de cada archivo para generar el link público,
+   y eso requiere Editor).
 5. Copiá el **ID de la carpeta** (de la URL de Drive,
    `drive.google.com/drive/folders/ESTE_ID`) → `GOOGLE_DRIVE_FOLDER_ID`.
 
