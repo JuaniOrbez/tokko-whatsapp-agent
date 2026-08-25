@@ -5,7 +5,7 @@ import { logger } from "../logger.js";
 import { handleIncomingMessage, relayHumanReply } from "../agent/orchestrator.js";
 import { isHumanEscalationNumber, resolveHumanReply } from "../agent/escalation.js";
 import { appendAssistantMessage } from "../agent/sessionStore.js";
-import { sendText, sendDocumentByLink } from "./client.js";
+import { sendText, sendDocumentByLink, withTwilioMediaAuth } from "./client.js";
 
 export const webhookRouter = Router();
 
@@ -118,7 +118,12 @@ async function handleHumanReply(
     // Reenvía el archivo real como adjunto de WhatsApp (no como texto) — el
     // MediaUrl que nos manda Twilio para un mensaje entrante también sirve
     // como mediaUrl saliente dentro de la misma cuenta.
-    await sendDocumentByLink(pending.customerPhone, mediaUrl, guessFilename(mediaContentType), text || undefined);
+    await sendDocumentByLink(
+      pending.customerPhone,
+      withTwilioMediaAuth(mediaUrl),
+      guessFilename(mediaContentType),
+      text || undefined,
+    );
     appendAssistantMessage(pending.customerPhone, text || "Te mando el archivo que me pediste.");
     logger.info("agent.human_reply_relayed_media", { from, customerPhone: pending.customerPhone });
     return;

@@ -28,6 +28,22 @@ export async function sendText(to: string, body: string): Promise<string> {
   return message.sid;
 }
 
+/**
+ * Los MediaUrl que Twilio manda para un mensaje ENTRANTE (api.twilio.com/.../Media/...)
+ * requieren autenticación básica para descargarse — a diferencia de un link
+ * público (ej. de Drive). Si se reenvían tal cual como mediaUrl de un
+ * mensaje saliente, Twilio no los puede buscar y el envío falla en
+ * silencio (se acepta el pedido pero no llega nada). Hay que insertarle
+ * las credenciales de la cuenta directo en la URL para que sí pueda.
+ * Solo aplica a URLs de Twilio — no usar esto con links de Drive u otros.
+ */
+export function withTwilioMediaAuth(mediaUrl: string): string {
+  const url = new URL(mediaUrl);
+  url.username = config.TWILIO_ACCOUNT_SID;
+  url.password = config.TWILIO_AUTH_TOKEN;
+  return url.toString();
+}
+
 export async function sendDocumentByLink(
   to: string,
   link: string,
