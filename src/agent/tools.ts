@@ -157,7 +157,11 @@ export async function executeTool(
       const summaries = items.map((p) => ({
         id: p.id,
         title: p.publication_title,
-        address: p.address ?? p.location?.name,
+        // Preferimos la ubicación del emprendimiento (development.location)
+        // sobre la de la unidad: en casos reales la de la unidad individual
+        // estaba mal cargada en Tokko (ver comentario en types.ts).
+        address: p.development?.location?.name ?? p.address ?? p.location?.name,
+        development_name: p.development?.name,
         rooms: p.room_amount,
         surface_m2: p.surface,
         operations: p.operations?.map((o) => ({
@@ -194,7 +198,8 @@ export async function executeTool(
         id: property.id,
         title: property.publication_title,
         description: property.description,
-        address: property.address ?? property.location?.name,
+        address: property.development?.location?.name ?? property.address ?? property.location?.name,
+        development_name: property.development?.name,
         rooms: property.room_amount,
         suites: property.suite_amount,
         surface_m2: property.surface,

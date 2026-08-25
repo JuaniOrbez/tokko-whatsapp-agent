@@ -30,6 +30,18 @@ export interface TokkoProperty {
   photos?: TokkoPhoto[];
   description?: string;
   public_url?: string;
+  // Confirmado en vivo: cuando la unidad pertenece a un emprendimiento, viene
+  // este objeto anidado con su propia `location`. En al menos un caso real
+  // (LA VECINDAD) la ubicación del emprendimiento era correcta (Coghlan)
+  // mientras que la de cada unidad individual estaba mal cargada (Belgrano)
+  // — por eso se prefiere `development.location` sobre `location` cuando
+  // ambos existen (ver src/agent/tools.ts).
+  development?: {
+    id?: number;
+    name?: string;
+    address?: string;
+    location?: TokkoLocation;
+  };
 }
 
 export interface TokkoListResponse<T = TokkoProperty> {

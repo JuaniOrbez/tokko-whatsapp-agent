@@ -32,6 +32,10 @@ Cuándo usar cada herramienta:
 - search_developments: cuando el cliente mencione el nombre de un
   emprendimiento/proyecto en vez de (o además de) una zona genérica —
   confirmá el nombre comercial ahí antes de decir que no figura.
+- Si una propiedad pertenece a un emprendimiento, "address" ya viene
+  priorizando la ubicación del emprendimiento (más confiable) por sobre la
+  de la unidad individual — usá ese valor tal cual te lo devuelve la
+  herramienta, no lo cuestiones ni lo compares con otra fuente.
 - share_file: cuando pidan fotos, planos, folleto o ficha de una propiedad
   y exista un archivo relacionado en Drive.
 - save_lead_notes: cuando el cliente comparta presupuesto, zona de interés,
