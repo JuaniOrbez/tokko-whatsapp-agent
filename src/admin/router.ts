@@ -68,6 +68,7 @@ adminRouter.post("/admin", (req: Request, res: Response) => {
   const settings: AppSettings = {
     escalationNumbers,
     zonapropLinksFileName: (body.zonapropLinksFileName ?? "").trim() || "Links Zonaprop",
+    driveFolderId: (body.driveFolderId ?? "").trim() || undefined,
     tokko: {
       operationIdSale: toNumberOrUndefined(body.operationIdSale),
       operationIdRent: toNumberOrUndefined(body.operationIdRent),
@@ -100,10 +101,10 @@ function esc(value: string | number | undefined): string {
 function renderPage(settings: AppSettings, saved: boolean): string {
   const stageInputs = STAGE_KEYS.map(
     (key) => `
-      <div class="field">
-        <label for="stage_${key}">${esc(STAGE_LABELS[key])}</label>
-        <input type="number" id="stage_${key}" name="stage_${key}" value="${esc(settings.tokko.stages[key])}" placeholder="ID en Tokko">
-      </div>`,
+        <div class="field">
+          <label for="stage_${key}">${esc(STAGE_LABELS[key])}</label>
+          <input type="number" id="stage_${key}" name="stage_${key}" value="${esc(settings.tokko.stages[key])}" placeholder="ID en Tokko">
+        </div>`,
   ).join("\n");
 
   return `<!doctype html>
@@ -111,61 +112,137 @@ function renderPage(settings: AppSettings, saved: boolean): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Configuración del agente</title>
+<title>Agente WhatsApp — Configuración</title>
 <style>
-  body { font-family: -apple-system, system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
-  h1 { font-size: 1.4rem; }
-  h2 { font-size: 1.1rem; margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-  .field { margin-bottom: 14px; }
-  label { display: block; font-size: 0.9rem; margin-bottom: 4px; color: #444; }
-  input[type=text], input[type=number], textarea {
-    width: 100%; box-sizing: border-box; padding: 8px; font-size: 1rem;
-    border: 1px solid #ccc; border-radius: 6px;
+  :root {
+    --brand: #1a7f4b;
+    --brand-dark: #156138;
+    --bg: #f4f6f5;
+    --card: #ffffff;
+    --border: #e2e5e4;
+    --text: #1c1f1e;
+    --text-muted: #6b7370;
   }
-  textarea { min-height: 80px; font-family: inherit; }
-  .hint { font-size: 0.82rem; color: #777; margin-top: 4px; }
-  .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
-  button { margin-top: 24px; padding: 10px 20px; font-size: 1rem; background: #1a7f4b; color: white; border: none; border-radius: 6px; cursor: pointer; }
-  button:hover { background: #156138; }
-  .banner { background: #e6f4ea; border: 1px solid #1a7f4b; padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    margin: 0; background: var(--bg); color: var(--text);
+  }
+  header {
+    background: linear-gradient(135deg, var(--brand), var(--brand-dark));
+    color: white; padding: 22px 24px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  header .logo {
+    width: 38px; height: 38px; border-radius: 10px; background: rgba(255,255,255,0.18);
+    display: flex; align-items: center; justify-content: center; font-size: 1.3rem;
+  }
+  header h1 { font-size: 1.2rem; margin: 0; }
+  header p { margin: 2px 0 0; font-size: 0.85rem; opacity: 0.85; }
+  main { max-width: 680px; margin: 32px auto 64px; padding: 0 16px; }
+  .banner {
+    background: #e6f4ea; border: 1px solid var(--brand); color: #145030;
+    padding: 10px 14px; border-radius: 8px; margin-bottom: 20px; font-size: 0.92rem;
+  }
+  form { display: flex; flex-direction: column; gap: 16px; }
+  details.section {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden;
+  }
+  details.section[open] summary { border-bottom: 1px solid var(--border); }
+  details.section summary {
+    list-style: none; cursor: pointer; padding: 16px 20px;
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 600; font-size: 1rem; user-select: none;
+  }
+  details.section summary::-webkit-details-marker { display: none; }
+  details.section summary .icon { font-size: 1.1rem; }
+  details.section summary .chevron { margin-left: auto; color: var(--text-muted); transition: transform 0.15s; }
+  details.section[open] summary .chevron { transform: rotate(90deg); }
+  details.section summary .subtitle { font-weight: 400; font-size: 0.82rem; color: var(--text-muted); }
+  .section-body { padding: 4px 20px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .field label { display: block; font-size: 0.88rem; margin-bottom: 5px; color: #3c4240; font-weight: 500; }
+  input[type=text], input[type=number], textarea {
+    width: 100%; padding: 9px 10px; font-size: 0.95rem;
+    border: 1px solid #cfd4d2; border-radius: 7px; font-family: inherit; background: #fcfdfd;
+  }
+  input:focus, textarea:focus { outline: 2px solid var(--brand); outline-offset: 1px; border-color: var(--brand); }
+  textarea { min-height: 76px; resize: vertical; }
+  .hint { font-size: 0.8rem; color: var(--text-muted); margin-top: 5px; line-height: 1.4; }
+  .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+  @media (max-width: 480px) { .stages { grid-template-columns: 1fr; } }
+  .actions { position: sticky; bottom: 0; padding-top: 4px; }
+  button {
+    padding: 11px 22px; font-size: 0.95rem; font-weight: 600; background: var(--brand);
+    color: white; border: none; border-radius: 8px; cursor: pointer; width: 100%;
+  }
+  button:hover { background: var(--brand-dark); }
 </style>
 </head>
 <body>
-  <h1>Configuración del agente</h1>
-  ${saved ? '<div class="banner">Guardado correctamente.</div>' : ""}
-  <form method="POST" action="/admin">
-
-    <h2>Escalamiento a humano</h2>
-    <div class="field">
-      <label for="escalationNumbers">Números de WhatsApp (uno por línea, formato +54911...)</label>
-      <textarea id="escalationNumbers" name="escalationNumbers">${esc(settings.escalationNumbers.join("\n"))}</textarea>
-      <div class="hint">Cada número tiene que estar sumado al sandbox de Twilio mientras no se pase a un número productivo.</div>
+  <header>
+    <div class="logo">🤖</div>
+    <div>
+      <h1>Agente WhatsApp</h1>
+      <p>Panel de configuración</p>
     </div>
+  </header>
+  <main>
+    ${saved ? '<div class="banner">✓ Guardado correctamente.</div>' : ""}
+    <form method="POST" action="/admin">
 
-    <h2>Google Drive</h2>
-    <div class="field">
-      <label for="zonapropLinksFileName">Nombre del archivo con los links de Zonaprop</label>
-      <input type="text" id="zonapropLinksFileName" name="zonapropLinksFileName" value="${esc(settings.zonapropLinksFileName)}">
-      <div class="hint">Un archivo de texto/Doc/Sheet en Drive con líneas "nombre,link".</div>
-    </div>
+      <details class="section" open>
+        <summary><span class="icon">👥</span> Números de contacto<span class="chevron">›</span></summary>
+        <div class="section-body">
+          <div class="field">
+            <label for="escalationNumbers">Números de WhatsApp que reciben los escalamientos (uno por línea)</label>
+            <textarea id="escalationNumbers" name="escalationNumbers" placeholder="+5491122334455">${esc(settings.escalationNumbers.join("\n"))}</textarea>
+            <div class="hint">No puede ser un grupo de WhatsApp (la API no lo permite) — cada línea es un número individual. Mientras estés en el sandbox de Twilio, cada uno tiene que sumarse mandándole "join &lt;palabra-clave&gt;" al número del sandbox.</div>
+          </div>
+        </div>
+      </details>
 
-    <h2>Tokko — operaciones</h2>
-    <div class="field">
-      <label for="operationIdSale">ID de operación: Venta</label>
-      <input type="number" id="operationIdSale" name="operationIdSale" value="${esc(settings.tokko.operationIdSale)}">
-    </div>
-    <div class="field">
-      <label for="operationIdRent">ID de operación: Alquiler</label>
-      <input type="number" id="operationIdRent" name="operationIdRent" value="${esc(settings.tokko.operationIdRent)}">
-    </div>
+      <details class="section">
+        <summary><span class="icon">📁</span> Google Drive<span class="chevron">›</span></summary>
+        <div class="section-body">
+          <div class="field">
+            <label for="driveFolderId">Carpeta donde buscar archivos (opcional)</label>
+            <input type="text" id="driveFolderId" name="driveFolderId" value="${esc(settings.driveFolderId)}" placeholder="ID de la carpeta">
+            <div class="hint">De la URL de Drive: drive.google.com/drive/folders/<b>ESTE_ID</b>. Busca también en subcarpetas. Si lo dejás vacío, busca en todo lo que la cuenta de servicio tenga compartido.</div>
+          </div>
+          <div class="field">
+            <label for="zonapropLinksFileName">Nombre del archivo con los links de Zonaprop</label>
+            <input type="text" id="zonapropLinksFileName" name="zonapropLinksFileName" value="${esc(settings.zonapropLinksFileName)}">
+            <div class="hint">Un archivo de texto/Doc/Sheet en Drive con líneas "nombre,link" (uno por propiedad/emprendimiento).</div>
+          </div>
+        </div>
+      </details>
 
-    <h2>Tokko — etapas de Oportunidades</h2>
-    <div class="stages">
-      ${stageInputs}
-    </div>
+      <details class="section">
+        <summary><span class="icon">🏢</span> Tokko<span class="subtitle">operaciones y etapas</span><span class="chevron">›</span></summary>
+        <div class="section-body">
+          <div class="field">
+            <label for="operationIdSale">ID de operación: Venta</label>
+            <input type="number" id="operationIdSale" name="operationIdSale" value="${esc(settings.tokko.operationIdSale)}">
+          </div>
+          <div class="field">
+            <label for="operationIdRent">ID de operación: Alquiler</label>
+            <input type="number" id="operationIdRent" name="operationIdRent" value="${esc(settings.tokko.operationIdRent)}">
+          </div>
+          <div class="field">
+            <label>Etapas del workflow de Oportunidades</label>
+            <div class="stages">
+              ${stageInputs}
+            </div>
+          </div>
+        </div>
+      </details>
 
-    <button type="submit">Guardar</button>
-  </form>
+      <div class="actions">
+        <button type="submit">Guardar cambios</button>
+      </div>
+    </form>
+  </main>
 </body>
 </html>`;
 }

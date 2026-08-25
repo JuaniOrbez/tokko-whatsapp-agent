@@ -21,16 +21,54 @@ function escapeForDriveQuery(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
+const MAX_FOLDERS_SCANNED = 50;
+
 /**
- * Busca archivos por nombre (contiene) entre todo lo que la cuenta de
- * servicio puede ver. No restringe por `GOOGLE_DRIVE_FOLDER_ID`: el permiso
- * que le diste a esa carpeta ya se hereda a todas sus subcarpetas y
- * archivos, así que alcanza con dejarla organizada como quieras (con
- * subcarpetas incluso) — no hace falta que los archivos estén sueltos.
+ * Junta el ID de `rootId` más el de todas sus subcarpetas (recorrido en
+ * ancho, con un tope) — Drive no tiene una forma nativa de decir "busca
+ * recursivo", hay que armar la lista de carpetas a mano.
+ */
+async function collectFolderIds(rootId: string): Promise<string[]> {
+  const ids = [rootId];
+  const queue = [rootId];
+  while (queue.length > 0 && ids.length < MAX_FOLDERS_SCANNED) {
+    const parent = queue.shift()!;
+    const res = await drive.files.list({
+      q: `trashed = false and mimeType = 'application/vnd.google-apps.folder' and '${parent}' in parents`,
+      fields: "files(id)",
+      pageSize: 100,
+    });
+    for (const folder of res.data.files ?? []) {
+      if (folder.id && !ids.includes(folder.id)) {
+        ids.push(folder.id);
+        queue.push(folder.id);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Devuelve el fragmento de query para restringir la búsqueda a la carpeta
+ * configurada en /admin (y sus subcarpetas), o "" si no hay ninguna
+ * configurada (en ese caso se busca en todo lo que la cuenta de servicio
+ * tenga compartido).
+ */
+async function parentsClause(): Promise<string> {
+  const folderId = getSettings().driveFolderId;
+  if (!folderId) return "";
+  const folderIds = await collectFolderIds(folderId);
+  return ` and (${folderIds.map((id) => `'${id}' in parents`).join(" or ")})`;
+}
+
+/**
+ * Busca archivos por nombre (contiene) dentro de la carpeta configurada en
+ * /admin (y sus subcarpetas) — o en todo lo que la cuenta de servicio
+ * puede ver si no hay ninguna carpeta configurada.
  */
 export async function findFilesByName(query: string, limit = 5): Promise<DriveFileResult[]> {
   const res = await drive.files.list({
-    q: `trashed = false and name contains '${escapeForDriveQuery(query)}'`,
+    q: `trashed = false and name contains '${escapeForDriveQuery(query)}'${await parentsClause()}`,
     fields: "files(id, name, mimeType, webViewLink, webContentLink)",
     pageSize: limit,
   });
@@ -67,7 +105,7 @@ export async function findZonapropLink(query: string): Promise<string | null> {
   // por accidente un archivo que es solo para uso interno del agente.
   const fileName = getSettings().zonapropLinksFileName;
   const list = await drive.files.list({
-    q: `trashed = false and name contains '${escapeForDriveQuery(fileName)}'`,
+    q: `trashed = false and name contains '${escapeForDriveQuery(fileName)}'${await parentsClause()}`,
     fields: "files(id, mimeType)",
     pageSize: 1,
   });

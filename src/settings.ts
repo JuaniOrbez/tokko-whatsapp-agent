@@ -18,6 +18,10 @@ export interface AppSettings {
   // Nombre del archivo en Drive que mapea nombre de propiedad -> link de
   // Zonaprop (ver findZonapropLink en drive/client.ts).
   zonapropLinksFileName: string;
+  // ID de la carpeta de Drive donde buscar archivos (de la URL,
+  // drive.google.com/drive/folders/ESTE_ID). Opcional: si se deja vacío,
+  // busca en todo lo que la cuenta de servicio tenga compartido.
+  driveFolderId?: string;
   tokko: {
     operationIdSale?: number;
     operationIdRent?: number;
@@ -33,6 +37,7 @@ function defaultSettings(): AppSettings {
   return {
     escalationNumbers: config.HUMAN_ESCALATION_WHATSAPP_NUMBERS ?? [],
     zonapropLinksFileName: "Links Zonaprop",
+    driveFolderId: undefined,
     tokko: {
       operationIdSale: config.TOKKO_OPERATION_ID_SALE,
       operationIdRent: config.TOKKO_OPERATION_ID_RENT,
