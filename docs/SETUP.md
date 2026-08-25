@@ -169,6 +169,24 @@ ver" al momento de enviarlos — si preferís no hacer eso (por ejemplo,
 archivos confidenciales), hay que cambiar `ensurePublicLink` en
 `src/drive/client.ts` por otro mecanismo de distribución.
 
+### Links de Zonaprop (opcional)
+
+Tokko no expone por API el link de la publicación en Zonaprop (ver
+comentario en `findZonapropLink` de `src/drive/client.ts`) — es un dato que
+genera Zonaprop, no Tokko. Si querés que el agente pueda pasarlo cuando se
+lo pidan, armá un archivo de texto plano (`.txt` o `.csv`) en la misma
+carpeta de Drive, llamado **`Links Zonaprop`** (ese nombre exacto, la
+extensión no importa), con una línea por propiedad/emprendimiento:
+
+```
+LA VECINDAD Freire,https://www.zonaprop.com.ar/propiedades/clasificado/...
+Otra propiedad,https://www.zonaprop.com.ar/propiedades/clasificado/...
+```
+
+Es mantenimiento manual (hay que cargar cada línea a mano), así que es
+opcional — si no armás el archivo, `get_zonaprop_link` simplemente no
+encuentra nada y el agente lo dice con naturalidad.
+
 ## 4. Escalamiento a un humano
 
 El agente tiene una herramienta (`escalate_to_human`) para avisarle a

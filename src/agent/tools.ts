@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { tokkoClient } from "../tokko/client.js";
-import { findFilesByName } from "../drive/client.js";
+import { findFilesByName, findZonapropLink } from "../drive/client.js";
 import { sendDocumentByLink, sendText } from "../whatsapp/client.js";
 import { logger } from "../logger.js";
 import { config, type OpportunityStageKey } from "../config.js";
@@ -66,6 +66,22 @@ export const agentTools: Anthropic.Tool[] = [
         development_id: { type: "number" },
       },
       required: ["development_id"],
+    },
+  },
+  {
+    name: "get_zonaprop_link",
+    description:
+      "Busca el link de la publicación en Zonaprop de una propiedad o emprendimiento por nombre. " +
+      "Tokko no expone ese link por API (es de Zonaprop), así que sale de una lista a mano en " +
+      "Drive — puede no estar cargado. Usala solo si el cliente pide específicamente el link de " +
+      "Zonaprop; para el link general de la publicación usá el que ya viene en search_properties/" +
+      "get_development_details.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Nombre de la propiedad o emprendimiento." },
+      },
+      required: ["name"],
     },
   },
   {
@@ -241,6 +257,14 @@ export async function executeTool(
         address: development.address ?? development.location?.name,
         url: development.web_url || undefined,
         photo_count: development.photos?.length ?? 0,
+      });
+    }
+
+    case "get_zonaprop_link": {
+      const link = await findZonapropLink(input.name as string);
+      return JSON.stringify({
+        found: link !== null,
+        link: link ?? undefined,
       });
     }
 
