@@ -117,14 +117,17 @@ async function handleHumanReply(
   if (mediaUrl) {
     // Reenvía el archivo real como adjunto de WhatsApp (no como texto) — el
     // MediaUrl que nos manda Twilio para un mensaje entrante también sirve
-    // como mediaUrl saliente dentro de la misma cuenta.
+    // como mediaUrl saliente dentro de la misma cuenta. Si no escribió
+    // nada, igual mandamos un texto por defecto — nunca un archivo pelado
+    // sin ningún contexto.
+    const caption = text || "Acá tenés lo que me pediste.";
     await sendDocumentByLink(
       pending.customerPhone,
       withTwilioMediaAuth(mediaUrl),
       guessFilename(mediaContentType),
-      text || undefined,
+      caption,
     );
-    appendAssistantMessage(pending.customerPhone, text || "Te mando el archivo que me pediste.");
+    appendAssistantMessage(pending.customerPhone, caption);
     logger.info("agent.human_reply_relayed_media", { from, customerPhone: pending.customerPhone });
     return;
   }
