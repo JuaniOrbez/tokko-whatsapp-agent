@@ -48,8 +48,7 @@ function toArray(value: unknown): string[] {
 adminRouter.post("/admin", (req: Request, res: Response) => {
   const body = req.body as Record<string, unknown>;
 
-  const escalationNumbers = String(body.escalationNumbers ?? "")
-    .split("\n")
+  const escalationNumbers = toArray(body.escalationNumber)
     .map((n) => n.trim())
     .filter(Boolean);
 
@@ -112,10 +111,22 @@ function renderStageRow(stage: Partial<TokkoStage>): string {
               </div>`;
 }
 
+function renderNumberRow(value: string): string {
+  return `
+            <div class="number-row">
+              <input type="text" name="escalationNumber" value="${esc(value)}" placeholder="+5491122334455">
+            </div>`;
+}
+
 function renderPage(settings: AppSettings, saved: boolean): string {
   const stageRows = [
     ...settings.tokko.stages.map(renderStageRow),
     ...Array.from({ length: EXTRA_BLANK_STAGE_ROWS }, () => renderStageRow({})),
+  ].join("\n");
+
+  const numberRows = [
+    ...settings.escalationNumbers.map(renderNumberRow),
+    renderNumberRow(""),
   ].join("\n");
 
   return `<!doctype html>
@@ -157,7 +168,7 @@ function renderPage(settings: AppSettings, saved: boolean): string {
   }
   header h1 { font-size: 1.25rem; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
   header p { margin: 3px 0 0; font-size: 0.85rem; opacity: 0.82; }
-  main { max-width: 680px; margin: -14px auto 64px; padding: 0 16px; }
+  main { max-width: 680px; margin: 28px auto 64px; padding: 0 16px; }
   .banner {
     background: #e9fbf4; border: 1px solid #9be8ce; color: #0d7a5a;
     padding: 11px 16px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem;
@@ -206,6 +217,7 @@ function renderPage(settings: AppSettings, saved: boolean): string {
   .hint { font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
   .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 16px; }
   @media (max-width: 480px) { .stages { grid-template-columns: 1fr; } }
+  .number-rows { display: flex; flex-direction: column; gap: 9px; margin-bottom: 4px; }
   .stage-rows { display: flex; flex-direction: column; gap: 9px; }
   .stage-row-header {
     display: grid; grid-template-columns: 1fr 1.4fr 90px; gap: 8px;
@@ -247,9 +259,12 @@ function renderPage(settings: AppSettings, saved: boolean): string {
         <summary><span class="icon">👥</span> Números de contacto<span class="chevron">›</span></summary>
         <div class="section-body">
           <div class="field">
-            <label for="escalationNumbers">Números de WhatsApp que reciben los escalamientos (uno por línea)</label>
-            <textarea id="escalationNumbers" name="escalationNumbers" placeholder="+5491122334455">${esc(settings.escalationNumbers.join("\n"))}</textarea>
-            <div class="hint">No puede ser un grupo de WhatsApp (la API no lo permite) — cada línea es un número individual. Mientras estés en el sandbox de Twilio, cada uno tiene que sumarse mandándole "join &lt;palabra-clave&gt;" al número del sandbox.</div>
+            <label>Números de WhatsApp que reciben los escalamientos</label>
+            <div class="number-rows" id="numberRows">
+              ${numberRows}
+            </div>
+            <button type="button" class="add-row-btn" id="addNumberRowBtn">+ Agregar número</button>
+            <div class="hint">No puede ser un grupo de WhatsApp (la API no lo permite) — cada fila es un número individual. Mientras estés en el sandbox de Twilio, cada uno tiene que sumarse mandándole "join &lt;palabra-clave&gt;" al número del sandbox.</div>
           </div>
         </div>
       </details>
@@ -306,11 +321,21 @@ function renderPage(settings: AppSettings, saved: boolean): string {
       <input type="number" name="stageId" placeholder="ID Tokko">
     </div>
   </template>
+  <template id="numberRowTemplate">
+    <div class="number-row">
+      <input type="text" name="escalationNumber" placeholder="+5491122334455">
+    </div>
+  </template>
   <script>
     document.getElementById('addStageRowBtn').addEventListener('click', function () {
       var tpl = document.getElementById('stageRowTemplate');
       var row = tpl.content.cloneNode(true);
       document.getElementById('stageRows').appendChild(row);
+    });
+    document.getElementById('addNumberRowBtn').addEventListener('click', function () {
+      var tpl = document.getElementById('numberRowTemplate');
+      var row = tpl.content.cloneNode(true);
+      document.getElementById('numberRows').appendChild(row);
     });
   </script>
 </body>
