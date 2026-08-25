@@ -4,7 +4,8 @@ import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { handleIncomingMessage, relayHumanReply } from "../agent/orchestrator.js";
 import { isHumanEscalationNumber, resolveHumanReply } from "../agent/escalation.js";
-import { sendText } from "./client.js";
+import { appendAssistantMessage } from "../agent/sessionStore.js";
+import { sendText, sendDocumentByLink } from "./client.js";
 
 export const webhookRouter = Router();
 
@@ -58,11 +59,16 @@ webhookRouter.post("/webhook", validateTwilioSignature, (req: Request, res: Resp
   const body = req.body as Record<string, string>;
   const messageId = body.MessageSid;
   const from = (body.From ?? "").replace(/^whatsapp:/, "");
-  const text = body.Body;
+  const text = body.Body ?? "";
   const senderName = body.ProfileName || from;
+  // Twilio manda los adjuntos aparte del texto (NumMedia/MediaUrlN) — un
+  // mensaje con un archivo puede no tener nada en Body.
+  const hasMedia = Number(body.NumMedia ?? "0") > 0;
+  const mediaUrl = hasMedia ? body.MediaUrl0 : undefined;
+  const mediaContentType = hasMedia ? body.MediaContentType0 : undefined;
 
-  if (!messageId || !from || !text) {
-    logger.info("whatsapp.unsupported_or_incomplete_message", { hasBody: Boolean(text) });
+  if (!messageId || !from || (!text && !mediaUrl)) {
+    logger.info("whatsapp.unsupported_or_incomplete_message", { hasBody: Boolean(text), hasMedia });
     return;
   }
   if (alreadyProcessed(messageId)) return;
@@ -72,9 +78,11 @@ webhookRouter.post("/webhook", validateTwilioSignature, (req: Request, res: Resp
   // consulta que le reenviamos, así que la enganchamos con esa consulta y
   // se la mandamos directo al cliente en vez de tratarlo como un cliente más.
   if (isHumanEscalationNumber(from)) {
-    handleHumanReply(from, text, body.OriginalRepliedMessageSid).catch((error) => {
-      logger.error("agent.handle_human_reply_failed", { from, error: String(error) });
-    });
+    handleHumanReply(from, text, body.OriginalRepliedMessageSid, mediaUrl, mediaContentType).catch(
+      (error) => {
+        logger.error("agent.handle_human_reply_failed", { from, error: String(error) });
+      },
+    );
     return;
   }
 
@@ -83,10 +91,18 @@ webhookRouter.post("/webhook", validateTwilioSignature, (req: Request, res: Resp
   });
 });
 
+function guessFilename(contentType: string | undefined): string {
+  const subtype = contentType?.split("/")[1]?.split(";")[0];
+  const ext = subtype === "jpeg" ? "jpg" : (subtype ?? "bin");
+  return `archivo.${ext}`;
+}
+
 async function handleHumanReply(
   from: string,
   text: string,
   repliedToSid: string | undefined,
+  mediaUrl: string | undefined,
+  mediaContentType: string | undefined,
 ): Promise<void> {
   const pending = resolveHumanReply(from, repliedToSid);
   if (!pending) {
@@ -97,6 +113,17 @@ async function handleHumanReply(
     ).catch(() => {});
     return;
   }
+
+  if (mediaUrl) {
+    // Reenvía el archivo real como adjunto de WhatsApp (no como texto) — el
+    // MediaUrl que nos manda Twilio para un mensaje entrante también sirve
+    // como mediaUrl saliente dentro de la misma cuenta.
+    await sendDocumentByLink(pending.customerPhone, mediaUrl, guessFilename(mediaContentType), text || undefined);
+    appendAssistantMessage(pending.customerPhone, text || "Te mando el archivo que me pediste.");
+    logger.info("agent.human_reply_relayed_media", { from, customerPhone: pending.customerPhone });
+    return;
+  }
+
   // No se manda tal cual: se redacta con el estilo del agente y en
   // contexto de la charla, para que se sienta como una respuesta más del
   // mismo chat en vez de un texto pegado sin aclarar que respondió un humano.
