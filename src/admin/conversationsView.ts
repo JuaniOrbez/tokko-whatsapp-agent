@@ -5,26 +5,28 @@ import { logger } from "../logger.js";
 import { esc, pageShell as pageShellBase } from "./layout.js";
 
 const anthropic = new Anthropic();
-function pageShell(title: string, body: string): string {
-  return pageShellBase(title, body, "/admin");
+function pageShell(title: string, body: string, opts?: { wide?: boolean }): string {
+  return pageShellBase(title, body, "/admin", opts);
 }
 
 const FLOW_SYSTEM_PROMPT = `Convertís una conversación de WhatsApp entre un
 cliente y un agente inmobiliario en un diagrama de flujo en sintaxis
 Mermaid (flowchart LR, de izquierda a derecha). Cada nodo representa un
 momento clave de la charla — no hace falta un nodo por cada mensaje,
-agrupá lo que tenga sentido. Texto corto por nodo (máximo ~8 palabras).
+agrupá lo que tenga sentido. Texto corto por nodo (máximo ~6 palabras).
 
 Reglas de sintaxis, estrictas:
 - Cada nodo se define como id(Texto del nodo) — rectángulo redondeado,
   nunca otra forma (nada de {}, [[ ]], (( )), etc.).
-- Cada nodo termina con exactamente una de estas tres clases, sin
-  excepción — no declares vos los classDef, ya están definidos aparte:
-  :::cliente   → algo que preguntó o dijo el cliente
-  :::agente    → una respuesta o acción del agente
-  :::evento    → una derivación a un humano, o un resultado/cierre de la charla
+- Cada nodo arranca con un emoji fijo según su tipo (siempre el mismo
+  emoji para ese tipo) y termina con exactamente una de estas tres
+  clases, sin excepción — no declares vos los classDef, ya están
+  definidos aparte:
+  👤 ... :::cliente   → algo que preguntó o dijo el cliente
+  🤖 ... :::agente    → una respuesta o acción del agente
+  🔀 ... :::evento    → una derivación a un humano, o un resultado/cierre de la charla
 
-Ejemplo de una línea válida: a(Pregunta por 2 ambientes en Núñez):::cliente
+Ejemplo de una línea válida: a(👤 Pregunta por 2 ambientes en Núñez):::cliente
 
 Devolvé ÚNICAMENTE código Mermaid válido, sin explicaciones ni bloques de
 markdown \`\`\`, arrancando directo con "flowchart LR".`;
@@ -112,7 +114,7 @@ export async function renderConversationDetail(phone: string): Promise<string> {
     </div>
     <div class="msg-log">${messagesHtml}</div>
   `;
-  return pageShell(`${entries[0].name} · ${phone}`, body);
+  return pageShell(`${entries[0].name} · ${phone}`, body, { wide: true });
 }
 
 export async function renderDailySummaryView(): Promise<string> {
