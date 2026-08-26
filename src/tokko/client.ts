@@ -21,12 +21,15 @@ import type {
  *   contacto. `/property/search/` exige un `data` cuyo formato no logramos
  *   determinar, por eso `searchProperties` filtra en el servidor Node sobre
  *   el listado de `/property/`.
- * - **Escribir directo sobre `/contact/{id}/` está bloqueado**: PATCH y
- *   POST devuelven el texto plano "GET" (parece un firewall/CDN delante de
- *   www.tokkobroker.com que solo deja pasar GET en esa ruta). Por eso
- *   `updateContactStage` va a seguir fallando hasta que Tokko habilite
- *   escritura ahí — lo dejamos igual por si lo habilitan más adelante, pero
- *   no confíes en que funcione hoy.
+ * - **Escribir directo sobre `/contact/{id}/` está bloqueado**: PATCH
+ *   devuelve `405 Method Not Allowed` con header `Allow: GET` (confirmado
+ *   en vivo el 2026-08-26) — no es un tema de permisos de la API key (Tokko
+ *   confirmó que es la misma key para lectura y escritura), la ruta en sí
+ *   no tiene el método habilitado a nivel HTTP, probablemente en el
+ *   Cloudflare/CDN delante de www.tokkobroker.com. Por eso
+ *   `updateContactStage` va a seguir fallando hasta que Tokko habilite el
+ *   método ahí — lo dejamos igual por si lo habilitan más adelante, pero no
+ *   confíes en que funcione hoy.
  * - **`POST /webcontact/` sí funciona** (devuelve 201) — es el endpoint que
  *   usan los portales externos (Zonaprop, etc.) para cargar leads. OJO: no
  *   crea un Contacto directamente, crea una "Consulta" en la bandeja
@@ -249,8 +252,9 @@ class TokkoClient {
    * actualizando su campo `opportunity_status`. `stageKey` es la `key` de
    * una etapa configurada en /admin (ver src/settings.ts#TokkoStage) — la
    * lista de etapas es libre, no un enum fijo.
-   * NO FUNCIONA hoy (ver comentario arriba del archivo) — queda por si
-   * Tokko habilita escritura sobre /contact/{id}/ más adelante.
+   * NO FUNCIONA hoy: /contact/{id}/ devuelve 405 para PATCH (ver comentario
+   * arriba del archivo) — queda por si Tokko habilita el método más
+   * adelante.
    */
   async updateContactStage(contactId: number, stageKey: string): Promise<void> {
     const stageId = getSettings().tokko.stages.find((s) => s.key === stageKey)?.tokkoId;
