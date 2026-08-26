@@ -226,14 +226,15 @@ function renderStyleOverrideRow(o: Partial<CommunicationStyleOverride>): string 
 
 const NARROW_PAGE_STYLE = `
   <style>
-    .narrow { max-width: 300px; margin: 40px auto 0; display: flex; flex-direction: column; gap: 12px; }
-    .nav-btn { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #eaeaf3; border-radius: 14px; padding: 14px 16px; text-decoration: none; color: #16162a; box-shadow: 0 1px 2px rgba(23,21,60,0.05); transition: box-shadow .15s ease, transform .1s ease; }
-    .nav-btn:hover { box-shadow: 0 4px 14px rgba(23,21,60,0.08); transform: translateY(-1px); }
-    .nav-btn-icon { font-size: 1.3rem; }
-    .nav-btn-title { display: block; font-weight: 600; font-size: 0.95rem; }
-    .nav-btn-sub { display: block; font-size: 0.78rem; color: #75758c; margin-top: 2px; }
+    .narrow { max-width: 360px; margin: 40px auto 0; display: flex; flex-direction: column; gap: 14px; }
     .hello { font-size: 0.85rem; color: #75758c; text-align: center; margin-bottom: 2px; }
-    .logout-btn { width: 100%; padding: 8px 16px; font-size: 0.82rem; background: none; color: #75758c; border: 1px solid #eaeaf3; border-radius: 8px; cursor: pointer; margin-top: 8px; }
+    .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .tile { display: flex; flex-direction: column; justify-content: space-between; min-height: 118px; background: #fff; border: 1px solid #eaeaf3; border-radius: 20px; padding: 16px; text-decoration: none; color: #16162a; box-shadow: 0 1px 2px rgba(23,21,60,0.05); transition: box-shadow .15s ease, transform .1s ease; }
+    .tile:hover { box-shadow: 0 4px 14px rgba(23,21,60,0.08); transform: translateY(-1px); }
+    .tile-icon { width: 38px; height: 38px; border-radius: 11px; background: #efedfe; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; }
+    .tile-title { display: block; font-weight: 600; font-size: 0.9rem; margin-top: 12px; line-height: 1.25; }
+    .tile-sub { display: block; font-size: 0.72rem; color: #75758c; margin-top: 3px; line-height: 1.3; }
+    .logout-btn { width: 100%; padding: 8px 16px; font-size: 0.82rem; background: none; color: #75758c; border: 1px solid #eaeaf3; border-radius: 8px; cursor: pointer; margin-top: 4px; }
     .narrow-card { background: #fff; border: 1px solid #eaeaf3; border-radius: 14px; padding: 22px 20px; box-shadow: 0 1px 2px rgba(23,21,60,0.05); }
     .narrow-field label { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 5px; }
     .narrow-field input { width: 100%; padding: 9px 11px; border: 1.5px solid #eaeaf3; border-radius: 10px; font-size: 0.92rem; font-family: inherit; }
@@ -247,20 +248,36 @@ function renderLandingPage(username: string): string {
   const body = `
     <div class="narrow">
       <div class="hello">Hola, ${esc(username)}</div>
-      <a class="nav-btn" href="/admin/metrics">
-        <span class="nav-btn-icon">📊</span>
-        <span>
-          <span class="nav-btn-title">Métricas</span>
-          <span class="nav-btn-sub">Consultas, canales de origen</span>
-        </span>
-      </a>
-      <a class="nav-btn" href="/admin/config">
-        <span class="nav-btn-icon">⚙️</span>
-        <span>
-          <span class="nav-btn-title">Configuración</span>
-          <span class="nav-btn-sub">Números, Drive, Tokko, estilo del agente</span>
-        </span>
-      </a>
+      <div class="tile-grid">
+        <a class="tile" href="/admin/metrics">
+          <span class="tile-icon">📊</span>
+          <span>
+            <span class="tile-title">Métricas</span>
+            <span class="tile-sub">Consultas, canales de origen</span>
+          </span>
+        </a>
+        <a class="tile" href="/admin/config">
+          <span class="tile-icon">⚙️</span>
+          <span>
+            <span class="tile-title">Configuración</span>
+            <span class="tile-sub">Números, Drive, Tokko, estilo</span>
+          </span>
+        </a>
+        <a class="tile" href="/admin/conversations">
+          <span class="tile-icon">💬</span>
+          <span>
+            <span class="tile-title">Ver conversaciones</span>
+            <span class="tile-sub">Historial y diagrama por cliente</span>
+          </span>
+        </a>
+        <a class="tile" href="/admin/daily-summary">
+          <span class="tile-icon">📋</span>
+          <span>
+            <span class="tile-title">Resumen de hoy</span>
+            <span class="tile-sub">Actividad del día hasta ahora</span>
+          </span>
+        </a>
+      </div>
       <form method="POST" action="/admin/logout">
         <button type="submit" class="logout-btn">Cerrar sesión</button>
       </form>
@@ -443,8 +460,6 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
       <h1>Agente WhatsApp</h1>
       <p>Configuración</p>
     </div>
-    <a href="/admin/conversations" style="color:white;text-decoration:none;font-size:0.85rem;opacity:0.9;border:1px solid rgba(255,255,255,0.4);padding:8px 14px;border-radius:8px;">Ver conversaciones</a>
-    <a href="/admin/daily-summary" style="color:white;text-decoration:none;font-size:0.85rem;opacity:0.9;border:1px solid rgba(255,255,255,0.4);padding:8px 14px;border-radius:8px;margin-left:8px;">Resumen de hoy</a>
   </header>
   <main>
     ${saved ? '<div class="banner">✓ Guardado correctamente.</div>' : ""}

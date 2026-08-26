@@ -6,17 +6,44 @@ import { esc, pageShell as pageShellBase } from "./layout.js";
 
 const anthropic = new Anthropic();
 function pageShell(title: string, body: string): string {
-  return pageShellBase(title, body, "/admin/config");
+  return pageShellBase(title, body, "/admin");
 }
 
 const FLOW_SYSTEM_PROMPT = `Convertís una conversación de WhatsApp entre un
 cliente y un agente inmobiliario en un diagrama de flujo en sintaxis
-Mermaid (flowchart TD). Cada nodo representa un momento clave de la charla
-(una pregunta del cliente, una respuesta relevante del agente, una
-derivación a un humano, un resultado/cierre) — no hace falta un nodo por
-cada mensaje, agrupá lo que tenga sentido. Texto corto por nodo (máximo
-~8 palabras). Devolvé ÚNICAMENTE código Mermaid válido, sin explicaciones
-ni bloques de markdown \`\`\`, arrancando directo con "flowchart TD".`;
+Mermaid (flowchart LR, de izquierda a derecha). Cada nodo representa un
+momento clave de la charla — no hace falta un nodo por cada mensaje,
+agrupá lo que tenga sentido. Texto corto por nodo (máximo ~8 palabras).
+
+Reglas de sintaxis, estrictas:
+- Cada nodo se define como id(Texto del nodo) — rectángulo redondeado,
+  nunca otra forma (nada de {}, [[ ]], (( )), etc.).
+- Cada nodo termina con exactamente una de estas tres clases, sin
+  excepción — no declares vos los classDef, ya están definidos aparte:
+  :::cliente   → algo que preguntó o dijo el cliente
+  :::agente    → una respuesta o acción del agente
+  :::evento    → una derivación a un humano, o un resultado/cierre de la charla
+
+Ejemplo de una línea válida: a(Pregunta por 2 ambientes en Núñez):::cliente
+
+Devolvé ÚNICAMENTE código Mermaid válido, sin explicaciones ni bloques de
+markdown \`\`\`, arrancando directo con "flowchart LR".`;
+
+// Colores fijos (no los define el LLM) — misma paleta categórica validada
+// que en metricsView.ts (node scripts/validate_palette.js de la skill de
+// dataviz), extendiendo el violeta de marca del resto del panel.
+const FLOW_CLASS_DEFS = `
+classDef cliente fill:#1a9c85,color:#ffffff,stroke:#158066,stroke-width:1px,rx:10,ry:10;
+classDef agente fill:#6d5ef8,color:#ffffff,stroke:#5646e0,stroke-width:1px,rx:10,ry:10;
+classDef evento fill:#c9820a,color:#ffffff,stroke:#a36a08,stroke-width:1px,rx:10,ry:10;
+`;
+
+const FLOW_LEGEND = `
+  <div class="flow-legend">
+    <span class="legend-item"><span class="swatch" style="background:#1a9c85"></span>Cliente</span>
+    <span class="legend-item"><span class="swatch" style="background:#6d5ef8"></span>Agente</span>
+    <span class="legend-item"><span class="swatch" style="background:#c9820a"></span>Derivación / resultado</span>
+  </div>`;
 
 export function renderConversationsList(): string {
   const conversations = listRecentConversations();
@@ -47,7 +74,7 @@ export async function renderConversationDetail(phone: string): Promise<string> {
     .map((e) => `[${new Date(e.ts).toLocaleString("es-AR")}] ${e.role === "user" ? "Cliente" : "Agente"}: ${e.text}`)
     .join("\n");
 
-  let mermaidCode = "flowchart TD\n  a[No se pudo generar el diagrama]";
+  let mermaidCode = "flowchart LR\n  a(No se pudo generar el diagrama):::evento";
   try {
     const response = await anthropic.messages.create({
       model: "claude-opus-5",
@@ -64,6 +91,9 @@ export async function renderConversationDetail(phone: string): Promise<string> {
   } catch (error) {
     logger.error("admin.conversation_diagram_failed", { phone, error: String(error) });
   }
+  // Los colores los define el código, no el LLM — se agregan siempre, así
+  // el diagrama nunca depende de que el modelo los haya declarado bien.
+  mermaidCode += `\n${FLOW_CLASS_DEFS}`;
 
   const messagesHtml = entries
     .map(
@@ -76,7 +106,10 @@ export async function renderConversationDetail(phone: string): Promise<string> {
     .join("\n");
 
   const body = `
-    <pre class="mermaid">${esc(mermaidCode)}</pre>
+    <div class="mermaid-card">
+      <pre class="mermaid">${esc(mermaidCode)}</pre>
+      ${FLOW_LEGEND}
+    </div>
     <div class="msg-log">${messagesHtml}</div>
   `;
   return pageShell(`${entries[0].name} · ${phone}`, body);

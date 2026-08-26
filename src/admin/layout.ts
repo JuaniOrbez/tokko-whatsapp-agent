@@ -36,7 +36,10 @@ export function pageShell(title: string, body: string, backHref = "/admin"): str
   .card a:hover { color: var(--brand); }
   .card .meta { font-size: 0.8rem; color: var(--text-muted); }
   .empty { color: var(--text-muted); padding: 20px 0; }
-  .mermaid { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; }
+  .mermaid-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 24px 16px; box-shadow: 0 1px 2px rgba(23,21,60,0.05); overflow-x: auto; }
+  .flow-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-muted); }
+  .legend-item .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
   .msg-log { margin-top: 24px; }
   .msg { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; font-size: 0.88rem; }
   .msg.user { border-left: 3px solid var(--brand); }
@@ -53,7 +56,21 @@ export function pageShell(title: string, body: string, backHref = "/admin"): str
   </header>
   <main>${body}</main>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-  <script>if (window.mermaid) mermaid.initialize({ startOnLoad: true });</script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "base",
+        flowchart: { curve: "basis" },
+        themeVariables: {
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+          fontSize: "13px",
+          lineColor: "#c3c2cf",
+          edgeLabelBackground: "#f4f5fb",
+        },
+      });
+    }
+  </script>
 </body>
 </html>`;
 }
