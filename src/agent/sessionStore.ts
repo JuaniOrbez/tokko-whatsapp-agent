@@ -12,7 +12,22 @@ export function getHistory(phone: string): Anthropic.MessageParam[] {
 }
 
 export function saveHistory(phone: string, messages: Anthropic.MessageParam[]): void {
-  sessions.set(phone, messages.slice(-MAX_MESSAGES));
+  sessions.set(phone, trimToSafeBoundary(messages));
+}
+
+/**
+ * Cortar los últimos MAX_MESSAGES a lo bruto puede partir una ronda de
+ * herramientas por la mitad: si el corte cae justo en el "tool_result" que
+ * sigue a un "tool_use" del asistente, ese tool_result queda primero en el
+ * historial sin su tool_use correspondiente, y la próxima llamada a la API
+ * de Claude falla con 400 ("unexpected tool_use_id"). Un mensaje de usuario
+ * con texto plano (un turno real del cliente, no un tool_result) siempre es
+ * un punto de corte seguro — nunca depende de un mensaje anterior.
+ */
+function trimToSafeBoundary(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  const sliced = messages.slice(-MAX_MESSAGES);
+  const start = sliced.findIndex((m) => m.role === "user" && typeof m.content === "string");
+  return start === -1 ? [] : sliced.slice(start);
 }
 
 /**
