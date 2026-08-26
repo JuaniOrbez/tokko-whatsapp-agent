@@ -140,9 +140,9 @@ de Meta). Ahí se actualiza `TWILIO_WHATSAPP_FROM` con el número real.
    **Venta = `operation_id: 1`**. Para Alquiler, buscá en el JSON de
    `/property/` una propiedad publicada en alquiler y fijate su
    `operations[].operation_id`. Estos IDs se cargan desde el panel
-   **`/admin`** (sección "Tokko — operaciones"), no en `.env` — si los
+   **`/admin/config`** (sección "Tokko — operaciones"), no en `.env` — si los
    dejás vacíos, la búsqueda simplemente no filtra por tipo de operación.
-6. **Etapas del workflow de Oportunidades**: se cargan desde **`/admin`**
+6. **Etapas del workflow de Oportunidades**: se cargan desde **`/admin/config`**
    (sección "Tokko" → "Etapas del workflow de Oportunidades") — es una
    lista libre, no fija: por cada etapa cargás una **Clave** (identificador
    interno que usa el agente, sin espacios, ej. `tomar_accion`), un
@@ -172,7 +172,7 @@ de Meta). Ahí se actualiza `TWILIO_WHATSAPP_FROM` con el número real.
 5. (Opcional) Si querés que la búsqueda se limite a esa carpeta puntual en
    vez de a todo lo que la cuenta de servicio tenga compartido, copiá el
    **ID de la carpeta** de la URL de Drive
-   (`drive.google.com/drive/folders/ESTE_ID`) y cargalo en **`/admin`**
+   (`drive.google.com/drive/folders/ESTE_ID`) y cargalo en **`/admin/config`**
    (sección "Google Drive" → "Carpeta donde buscar archivos"). Busca también
    dentro de las subcarpetas. Si lo dejás vacío, no hay ningún problema:
    simplemente busca en todo lo compartido.
@@ -188,7 +188,7 @@ Tokko no expone por API el link de la publicación en Zonaprop (ver
 comentario en `findZonapropLink` de `src/drive/client.ts`) — es un dato que
 genera Zonaprop, no Tokko. Si querés que el agente pueda pasarlo cuando se
 lo pidan, armá un archivo de texto plano (`.txt` o `.csv`) en la misma
-carpeta de Drive, con el nombre que tengas configurado en **`/admin`**
+carpeta de Drive, con el nombre que tengas configurado en **`/admin/config`**
 (sección "Google Drive" — por defecto **`Links Zonaprop`**), con una línea
 por propiedad/emprendimiento:
 
@@ -208,7 +208,7 @@ alguien del equipo por WhatsApp cuando no puede resolver una consulta. Es
 un mensaje saliente más, así que usa el mismo `TWILIO_WHATSAPP_FROM` que ya
 configuraste.
 
-1. En **`/admin`** (sección "Escalamiento a humano"), cargá el/los
+1. En **`/admin/config`** (sección "Escalamiento a humano"), cargá el/los
    número/s del equipo en formato E.164 (ej. `+5491122334455`), uno por
    línea.
 2. **No es un grupo de WhatsApp**: la WhatsApp Business API (ni vía Twilio
@@ -253,14 +253,30 @@ edita desde el navegador, en caliente, sin tocar la terminal:
    quieras, no la reutilices de otro lado. Sin esto, `/admin` devuelve un
    error 503 en vez de quedar sin protección.
 2. Con el servidor corriendo, entrá a `http://localhost:3000/admin` (o tu
-   dominio + `/admin` si ya lo tenés desplegado). El navegador te va a
-   pedir usuario y contraseña: usuario `admin`, contraseña la que pusiste
-   en `ADMIN_PASSWORD`.
-3. Ahí se edita: los números de escalamiento, la carpeta y el archivo de
-   links de Zonaprop en Drive, y los IDs de Tokko (operación venta/alquiler
-   y las etapas del workflow de Oportunidades — podés agregar, sacar o
-   renombrar etapas libremente, no es una lista fija). Al guardar, los
-   cambios aplican al toque, sin reiniciar nada.
+   dominio + `/admin` si ya lo tenés desplegado). Te va a pedir esa
+   contraseña en una pantalla de login (dura 7 días en el navegador; "Cerrar
+   sesión" desde el panel de inicio la borra antes).
+3. Desde ahí hay dos botones: **Métricas** (consultas por día y canal de
+   origen — ver más abajo) y **Configuración**, que es donde se edita todo
+   lo que antes había que tocar a mano en `.env` y reiniciar el servidor:
+   los números de escalamiento, la carpeta y el archivo de links de
+   Zonaprop en Drive, y los IDs de Tokko (operación venta/alquiler y las
+   etapas del workflow de Oportunidades — podés agregar, sacar o renombrar
+   etapas libremente, no es una lista fija). Al guardar, los cambios
+   aplican al toque, sin reiniciar nada.
+
+### Métricas (`/admin/metrics`)
+
+Muestra consultas nuevas por día (últimos 14 días) y por canal de origen.
+El canal se detecta en el primer mensaje de cada conversación: si viene de
+un anuncio de Instagram/Facebook ("click to WhatsApp") se detecta
+automático, con los datos de referral que manda Meta y reenvía Twilio; si
+el texto menciona "Zonaprop" se cuenta como tal; el resto queda como
+"WhatsApp directo". Esa detección de Zonaprop es un patrón simple sobre el
+texto del primer mensaje — convendría revisarlo con casos reales una vez
+que empiece a llegar tráfico desde ahí, capaz el mensaje precargado no dice
+literalmente "Zonaprop". El desglose por tipología y por emprendimiento
+consultado todavía no está — queda para una próxima vuelta.
 
 ### Estilo del agente
 

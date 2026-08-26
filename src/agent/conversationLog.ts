@@ -15,6 +15,9 @@ export interface ConversationLogEntry {
   name: string;
   role: "user" | "assistant";
   text: string;
+  // Solo se completa en el primer mensaje de una conversación — de dónde
+  // vino esa consulta (ver detectChannel en whatsapp/webhook.ts).
+  channel?: string;
 }
 
 const LOG_PATH = path.resolve(process.cwd(), "data", "conversations.jsonl");
@@ -68,4 +71,30 @@ export function listRecentConversations(limit = 50): { phone: string; name: stri
     }
   }
   return [...byPhone.values()].sort((a, b) => b.lastTs - a.lastTs).slice(0, limit);
+}
+
+export interface ConversationOrigin {
+  phone: string;
+  name: string;
+  firstTs: number;
+  channel: string;
+}
+
+/**
+ * Una fila por conversación (no por mensaje): cuándo empezó y por qué canal
+ * — la base del dashboard de métricas. Las conversaciones que arrancaron
+ * antes de que existiera este campo quedan como "Sin datos".
+ */
+export function listConversationOrigins(): ConversationOrigin[] {
+  const firstUserEntryByPhone = new Map<string, ConversationLogEntry>();
+  for (const e of readAllEntries()) {
+    if (e.role !== "user") continue;
+    const existing = firstUserEntryByPhone.get(e.phone);
+    if (!existing || e.ts < existing.ts) {
+      firstUserEntryByPhone.set(e.phone, e);
+    }
+  }
+  return [...firstUserEntryByPhone.values()]
+    .map((e) => ({ phone: e.phone, name: e.name, firstTs: e.ts, channel: e.channel ?? "Sin datos" }))
+    .sort((a, b) => a.firstTs - b.firstTs);
 }

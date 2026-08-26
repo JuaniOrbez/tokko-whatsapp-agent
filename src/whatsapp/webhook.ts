@@ -87,10 +87,27 @@ webhookRouter.post("/webhook", validateTwilioSignature, (req: Request, res: Resp
     return;
   }
 
-  handleIncomingMessage({ from, name: senderName, text }).catch((error) => {
+  const channel = detectChannel(body, text);
+  handleIncomingMessage({ from, name: senderName, text, channel }).catch((error) => {
     logger.error("agent.handle_message_failed", { from, error: String(error) });
   });
 });
+
+// De dónde vino la consulta, a partir del primer mensaje entrante. Meta manda
+// datos de "referral" cuando el mensaje arranca desde un botón de anuncio de
+// Instagram/Facebook ("click to WhatsApp") y Twilio los reenvía tal cual en
+// el webhook (ReferralSourceType/ReferralHeadline/etc). Zonaprop no manda
+// nada especial — se infiere por el texto precargado del primer mensaje, así
+// que este patrón puede necesitar ajustes una vez que se vean casos reales.
+function detectChannel(body: Record<string, string>, text: string): string {
+  if (body.ReferralSourceType || body.ReferralHeadline || body.ReferralCtwaClid) {
+    return "Instagram/Facebook (ads)";
+  }
+  if (/zonaprop/i.test(text)) {
+    return "Zonaprop";
+  }
+  return "WhatsApp directo";
+}
 
 function guessFilename(contentType: string | undefined): string {
   const subtype = contentType?.split("/")[1]?.split(";")[0];

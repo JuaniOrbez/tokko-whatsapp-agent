@@ -13,7 +13,7 @@ import {
   hasSubmittedInquiry,
   markInquirySubmitted,
 } from "./sessionStore.js";
-import { appendConversationLog, getLastKnownName } from "./conversationLog.js";
+import { appendConversationLog, getEntriesForPhone, getLastKnownName } from "./conversationLog.js";
 
 const anthropic = new Anthropic(); // toma ANTHROPIC_API_KEY del entorno
 
@@ -126,10 +126,11 @@ interface IncomingMessage {
   from: string;
   name: string;
   text: string;
+  channel?: string;
 }
 
 export async function handleIncomingMessage(msg: IncomingMessage): Promise<void> {
-  const { from, name, text } = msg;
+  const { from, name, text, channel } = msg;
 
   try {
     // El CRM es best-effort: si algo falla del lado de Tokko, el bot igual
@@ -155,7 +156,19 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
     const ctx: AgentContext = { customerPhone: from, customerName: name, contactId };
 
     const messages: Anthropic.MessageParam[] = [...getHistory(from), { role: "user", content: text }];
-    appendConversationLog({ ts: Date.now(), phone: from, name, role: "user", text });
+    // El canal de origen solo tiene sentido en el primer mensaje de la
+    // conversación (es de ahí que se infiere) — a partir del segundo ya no
+    // se manda nada distinto en el webhook, pero por las dudas se chequea
+    // que no haya historial previo antes de guardarlo.
+    const isFirstMessage = getEntriesForPhone(from).length === 0;
+    appendConversationLog({
+      ts: Date.now(),
+      phone: from,
+      name,
+      role: "user",
+      text,
+      channel: isFirstMessage ? channel : undefined,
+    });
 
     const replyText = await runAgentLoop(messages, ctx, text);
 

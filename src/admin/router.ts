@@ -1,5 +1,4 @@
-import { Router, type Request, type Response, type NextFunction } from "express";
-import { config } from "../config.js";
+import { Router, type Request, type Response } from "express";
 import {
   getSettings,
   saveSettings,
@@ -9,6 +8,9 @@ import {
 } from "../settings.js";
 import { initiateConversation } from "../agent/orchestrator.js";
 import { renderConversationsList, renderConversationDetail, renderDailySummaryView } from "./conversationsView.js";
+import { renderMetricsView } from "./metricsView.js";
+import { requireAdminAuth, checkPassword, setSessionCookie, clearSessionCookie } from "./auth.js";
+import { pageShell as layoutPageShell } from "./layout.js";
 import { logger } from "../logger.js";
 
 export const adminRouter = Router();
@@ -19,28 +21,40 @@ export const adminRouter = Router();
 const EXTRA_BLANK_STAGE_ROWS = 1;
 const EXTRA_BLANK_STYLE_OVERRIDE_ROWS = 1;
 
-function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
-  if (!config.ADMIN_PASSWORD) {
-    res
-      .status(503)
-      .send("Panel de administración no configurado — falta ADMIN_PASSWORD en el .env del servidor.");
-    return;
-  }
-
-  const header = req.header("authorization") ?? "";
-  const expected =
-    "Basic " + Buffer.from(`admin:${config.ADMIN_PASSWORD}`).toString("base64");
-  if (header !== expected) {
-    res.set("WWW-Authenticate", 'Basic realm="Panel de administración"');
-    res.status(401).send("Autenticación requerida.");
-    return;
-  }
-  next();
-}
-
 adminRouter.use("/admin", requireAdminAuth);
 
-adminRouter.get("/admin", (req: Request, res: Response) => {
+adminRouter.get("/admin/login", (req: Request, res: Response) => {
+  const error = req.query.error === "1";
+  const next = typeof req.query.next === "string" ? req.query.next : "/admin";
+  res.type("html").send(renderLoginPage({ error, next }));
+});
+
+adminRouter.post("/admin/login", (req: Request, res: Response) => {
+  const body = req.body as Record<string, string>;
+  const password = body.password ?? "";
+  const next = body.next && body.next.startsWith("/admin") ? body.next : "/admin";
+  if (!checkPassword(password)) {
+    res.redirect(`/admin/login?error=1&next=${encodeURIComponent(next)}`);
+    return;
+  }
+  setSessionCookie(res);
+  res.redirect(next);
+});
+
+adminRouter.post("/admin/logout", (_req: Request, res: Response) => {
+  clearSessionCookie(res);
+  res.redirect("/admin/login");
+});
+
+adminRouter.get("/admin", (_req: Request, res: Response) => {
+  res.type("html").send(renderLandingPage());
+});
+
+adminRouter.get("/admin/metrics", (_req: Request, res: Response) => {
+  res.type("html").send(renderMetricsView());
+});
+
+adminRouter.get("/admin/config", (req: Request, res: Response) => {
   const saved = req.query.saved === "1";
   const started = req.query.started === "1";
   const startError = typeof req.query.startError === "string" ? req.query.startError : undefined;
@@ -78,7 +92,7 @@ function toArray(value: unknown): string[] {
   return [];
 }
 
-adminRouter.post("/admin", (req: Request, res: Response) => {
+adminRouter.post("/admin/config", (req: Request, res: Response) => {
   const body = req.body as Record<string, unknown>;
 
   const escalationNumbers = toArray(body.escalationNumber)
@@ -128,7 +142,7 @@ adminRouter.post("/admin", (req: Request, res: Response) => {
 
   saveSettings(settings);
   logger.info("admin.settings_updated");
-  res.redirect("/admin?saved=1");
+  res.redirect("/admin/config?saved=1");
 });
 
 adminRouter.post("/admin/start-conversation", (req: Request, res: Response) => {
@@ -138,21 +152,21 @@ adminRouter.post("/admin/start-conversation", (req: Request, res: Response) => {
   const reason = (body.startReason ?? "").trim();
 
   if (!phone || !customerName || !reason) {
-    res.redirect("/admin?startError=" + encodeURIComponent("Completá número, nombre y motivo."));
+    res.redirect("/admin/config?startError=" + encodeURIComponent("Completá número, nombre y motivo."));
     return;
   }
 
   initiateConversation({ phone, customerName, reason })
     .then((result) => {
       if (result.ok) {
-        res.redirect("/admin?started=1");
+        res.redirect("/admin/config?started=1");
       } else {
-        res.redirect("/admin?startError=" + encodeURIComponent(result.error ?? "Error desconocido."));
+        res.redirect("/admin/config?startError=" + encodeURIComponent(result.error ?? "Error desconocido."));
       }
     })
     .catch((error) => {
       logger.error("admin.start_conversation_failed", { error: String(error) });
-      res.redirect("/admin?startError=" + encodeURIComponent(String(error)));
+      res.redirect("/admin/config?startError=" + encodeURIComponent(String(error)));
     });
 });
 
@@ -195,6 +209,42 @@ function renderStyleOverrideRow(o: Partial<CommunicationStyleOverride>): string 
                 <input type="text" name="styleOverrideMatch" value="${esc(o.match)}" placeholder="Nombre de propiedad/emprendimiento">
                 <input type="text" name="styleOverrideStyle" value="${esc(o.style)}" placeholder="Instrucciones de tono">
               </div>`;
+}
+
+function renderLandingPage(): string {
+  const body = `
+    <div class="card">
+      <a href="/admin/metrics">
+        <span>📊 Métricas</span>
+        <span class="meta">Consultas, canales de origen</span>
+      </a>
+    </div>
+    <div class="card">
+      <a href="/admin/config">
+        <span>⚙️ Configuración</span>
+        <span class="meta">Números, Drive, Tokko, estilo del agente</span>
+      </a>
+    </div>
+    <form method="POST" action="/admin/logout" style="margin-top:20px;">
+      <button type="submit" style="width:auto;padding:8px 16px;font-size:0.85rem;background:none;color:#75758c;border:1px solid #eaeaf3;box-shadow:none;border-radius:8px;cursor:pointer;">Cerrar sesión</button>
+    </form>
+  `;
+  return layoutPageShell("Agente WhatsApp", body, "/admin");
+}
+
+function renderLoginPage(opts: { error: boolean; next: string }): string {
+  const body = `
+    <div class="card">
+      <form method="POST" action="/admin/login" style="display:flex;flex-direction:column;gap:12px;">
+        <input type="hidden" name="next" value="${opts.next.replace(/"/g, "&quot;")}">
+        <label style="font-size:0.85rem;font-weight:600;">Contraseña</label>
+        <input type="password" name="password" autofocus style="padding:10px 12px;border:1.5px solid #eaeaf3;border-radius:10px;font-size:0.95rem;">
+        ${opts.error ? '<div style="color:#a31c1c;font-size:0.85rem;">Contraseña incorrecta.</div>' : ""}
+        <button type="submit" style="padding:11px 18px;background:linear-gradient(120deg,#6d5ef8,#5646e0);color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">Entrar</button>
+      </form>
+    </div>
+  `;
+  return layoutPageShell("Agente WhatsApp — Ingresar", body, "/admin/login");
 }
 
 interface PageNotices {
@@ -340,10 +390,11 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
 </head>
 <body>
   <header>
+    <a href="/admin" style="color:white;text-decoration:none;font-size:0.85rem;opacity:0.85;margin-right:2px;">← Panel</a>
     <div class="logo">🤖</div>
     <div style="flex:1">
       <h1>Agente WhatsApp</h1>
-      <p>Panel de configuración</p>
+      <p>Configuración</p>
     </div>
     <a href="/admin/conversations" style="color:white;text-decoration:none;font-size:0.85rem;opacity:0.9;border:1px solid rgba(255,255,255,0.4);padding:8px 14px;border-radius:8px;">Ver conversaciones</a>
     <a href="/admin/daily-summary" style="color:white;text-decoration:none;font-size:0.85rem;opacity:0.9;border:1px solid rgba(255,255,255,0.4);padding:8px 14px;border-radius:8px;margin-left:8px;">Resumen de hoy</a>
@@ -352,7 +403,7 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
     ${saved ? '<div class="banner">✓ Guardado correctamente.</div>' : ""}
     ${started ? '<div class="banner">✓ Conversación iniciada — se mandó el template por WhatsApp.</div>' : ""}
     ${startError ? `<div class="banner banner-error">✕ No se pudo iniciar la conversación: ${esc(startError)}</div>` : ""}
-    <form method="POST" action="/admin">
+    <form method="POST" action="/admin/config">
 
       <details class="section" open>
         <summary><span class="icon">👥</span> Números de contacto<span class="chevron">›</span></summary>
