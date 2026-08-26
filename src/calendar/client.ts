@@ -8,7 +8,8 @@ import type { SalesRep } from "../settings.js";
  * cuenta de servicio que ya usa Drive (ver docs/SETUP.md) — cada comercial
  * comparte su propio calendario con esa cuenta ("Hacer cambios en los
  * eventos") y se carga en /admin. El agente cruza la disponibilidad de
- * todos y agenda en el calendario de uno que esté libre.
+ * todos (o de uno puntual, si el cliente lo pidió por nombre) y agenda en
+ * el calendario de uno que esté libre.
  */
 const auth = new google.auth.GoogleAuth({
   keyFile: config.GOOGLE_SERVICE_ACCOUNT_FILE,
@@ -29,6 +30,23 @@ function argentinaLocalToUtc(dateStr: string, hour: number, minute: number): Dat
 function formatArgentinaTime(d: Date): string {
   const local = new Date(d.getTime() - ARGENTINA_UTC_OFFSET_HOURS * 60 * 60 * 1000);
   return `${String(local.getUTCHours()).padStart(2, "0")}:${String(local.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+function normalizeName(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/** Busca un comercial por nombre (sin importar acentos/mayúsculas, alcanza con que uno contenga al otro). */
+export function findRepByName(name: string): SalesRep | undefined {
+  const target = normalizeName(name);
+  return getSettings().visits.reps.find((r) => {
+    const repName = normalizeName(r.name);
+    return repName.includes(target) || target.includes(repName);
+  });
 }
 
 interface BusyRange {
@@ -52,21 +70,24 @@ async function getBusyRanges(calendarId: string, from: Date, to: Date): Promise<
 
 /**
  * Franjas libres para `dateStr` (YYYY-MM-DD, hora Argentina), recortadas al
- * horario laboral configurado en /admin y de a `durationMinutes`. Un
- * horario cuenta como libre si AL MENOS UN comercial no tiene nada ese
- * rato — la asignación a un comercial puntual se resuelve recién al
- * agendar (ver bookVisit). Devuelve [] si no hay comerciales cargados, o
- * si la fecha no tiene horario laboral válido (fin <= inicio).
+ * horario laboral configurado en /admin y de a `durationMinutes`. Sin
+ * `repName`, un horario cuenta como libre si AL MENOS UN comercial no
+ * tiene nada ese rato (la asignación puntual se resuelve recién al
+ * agendar, ver bookVisit); con `repName`, solo mira el calendario de ese
+ * comercial. Devuelve [] si no hay comerciales cargados (o no se
+ * encuentra el nombre pedido), o si la fecha no tiene horario laboral
+ * válido (fin <= inicio).
  */
-export async function getAvailableSlots(dateStr: string): Promise<string[]> {
+export async function getAvailableSlots(dateStr: string, repName?: string): Promise<string[]> {
   const settings = getSettings().visits;
-  if (settings.reps.length === 0) return [];
+  const reps = repName ? [findRepByName(repName)].filter((r): r is SalesRep => Boolean(r)) : settings.reps;
+  if (reps.length === 0) return [];
 
   const dayStart = argentinaLocalToUtc(dateStr, settings.businessHourStart, 0);
   const dayEnd = argentinaLocalToUtc(dateStr, settings.businessHourEnd, 0);
   if (dayEnd <= dayStart) return [];
 
-  const busyByRep = await Promise.all(settings.reps.map((rep) => getBusyRanges(rep.calendarId, dayStart, dayEnd)));
+  const busyByRep = await Promise.all(reps.map((rep) => getBusyRanges(rep.calendarId, dayStart, dayEnd)));
 
   const durationMs = settings.durationMinutes * 60 * 1000;
   const slots: string[] = [];
@@ -81,10 +102,9 @@ export async function getAvailableSlots(dateStr: string): Promise<string[]> {
   return slots;
 }
 
-/** Primer comercial (en el orden cargado en /admin) libre en ese horario puntual, o null si ninguno lo está. */
-async function findFreeRep(start: Date, end: Date): Promise<SalesRep | null> {
-  const settings = getSettings().visits;
-  for (const rep of settings.reps) {
+/** Primer comercial de `reps` (en ese orden) libre en ese horario puntual, o null si ninguno lo está. */
+async function findFreeRepAmong(reps: SalesRep[], start: Date, end: Date): Promise<SalesRep | null> {
+  for (const rep of reps) {
     const busy = await getBusyRanges(rep.calendarId, start, end);
     const overlaps = busy.some((b) => start < b.end && end > b.start);
     if (!overlaps) return rep;
@@ -100,6 +120,10 @@ export interface BookVisitInput {
   // Si se carga, se invita a esta dirección al evento (Calendar le manda
   // la invitación directo) — opcional, el cliente puede no querer darlo.
   clientEmail?: string;
+  // Si el cliente pidió un comercial puntual por nombre — si no está
+  // libre (o no se encuentra), bookVisit tira en vez de asignarle a otro
+  // sin avisar.
+  repName?: string;
 }
 
 export interface BookVisitResult {
@@ -110,9 +134,10 @@ export interface BookVisitResult {
 
 /**
  * Agenda el evento en el calendario de un comercial libre en ese horario.
- * Tira si no hay comerciales configurados, si ninguno está libre, o si
- * Calendar devuelve un error (fecha/hora inválida, etc.) — el llamador
- * decide qué responderle al cliente.
+ * Tira si no hay comerciales configurados, si `repName` no matchea a
+ * nadie, si ninguno (o el pedido puntualmente) está libre, o si Calendar
+ * devuelve un error (fecha/hora inválida, etc.) — el llamador decide qué
+ * responderle al cliente.
  */
 export async function bookVisit(input: BookVisitInput): Promise<BookVisitResult> {
   const settings = getSettings().visits;
@@ -128,9 +153,22 @@ export async function bookVisit(input: BookVisitInput): Promise<BookVisitResult>
   const start = argentinaLocalToUtc(input.dateStr, hour, minute);
   const end = new Date(start.getTime() + settings.durationMinutes * 60 * 1000);
 
-  const rep = await findFreeRep(start, end);
+  let candidateReps = settings.reps;
+  if (input.repName) {
+    const match = findRepByName(input.repName);
+    if (!match) {
+      throw new Error(`No encontré a "${input.repName}" entre los comerciales cargados.`);
+    }
+    candidateReps = [match];
+  }
+
+  const rep = await findFreeRepAmong(candidateReps, start, end);
   if (!rep) {
-    throw new Error("Ya no queda ningún comercial libre en ese horario.");
+    throw new Error(
+      input.repName
+        ? `${input.repName} ya no está libre en ese horario.`
+        : "Ya no queda ningún comercial libre en ese horario.",
+    );
   }
 
   const res = await calendar.events.insert({

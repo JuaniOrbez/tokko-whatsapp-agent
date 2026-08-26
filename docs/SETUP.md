@@ -292,6 +292,14 @@ dar, agenda igual sin ese dato). Si lo tiene, lo carga como invitado del
 evento — Google Calendar le manda la invitación automáticamente apenas se
 crea, sin que haya que hacer nada más de este lado.
 
+### Pedir un comercial en particular
+
+Si el cliente pide específicamente a alguien ("quiero que me atienda
+Martín"), el agente busca ese nombre entre los comerciales cargados
+(sin importar mayúsculas/acentos) y solo mira/agenda en su calendario —
+si esa persona no está libre en el horario elegido, no la reemplaza por
+otra sin avisar, le cuenta al cliente y propone alternativas.
+
 ## 6. Claude (Anthropic)
 
 1. Conseguí una API key en [console.anthropic.com](https://console.anthropic.com)

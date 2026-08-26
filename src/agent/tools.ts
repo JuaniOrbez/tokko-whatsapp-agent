@@ -6,7 +6,7 @@ import { logger } from "../logger.js";
 import { getSettings } from "../settings.js";
 import { escalateToHumans } from "./escalation.js";
 import { appendToolUsage } from "./toolUsageLog.js";
-import { getAvailableSlots, bookVisit } from "../calendar/client.js";
+import { getAvailableSlots, bookVisit, findRepByName } from "../calendar/client.js";
 
 export interface AgentContext {
   customerPhone: string;
@@ -141,46 +141,70 @@ const STATIC_TOOLS_BEFORE_STAGE: Anthropic.Tool[] = [
       required: ["query"],
     },
   },
-  {
-    name: "check_visit_availability",
-    description:
-      "Consulta los horarios libres para coordinar una visita o reunión en una fecha puntual, " +
-      "según el calendario y el horario laboral configurados en /admin. Usala siempre antes de " +
-      "proponerle un horario al cliente — nunca inventes disponibilidad.",
-    input_schema: {
-      type: "object",
-      properties: {
-        date: { type: "string", description: 'Fecha en formato YYYY-MM-DD (hora Argentina), ej. "2026-08-27".' },
-      },
-      required: ["date"],
-    },
-  },
-  {
-    name: "book_visit",
-    description:
-      "Agenda una visita o reunión con el cliente actual en el calendario de un comercial libre en " +
-      "ese horario, en un horario que ya confirmaste como libre con check_visit_availability. No la " +
-      "uses sin haber confirmado antes la disponibilidad, ni sin que el cliente haya confirmado el " +
-      "horario. Antes de llamarla pedile el mail al cliente para poder invitarlo al evento — si no " +
-      "te lo quiere dar, agendá igual sin ese dato, no es bloqueante.",
-    input_schema: {
-      type: "object",
-      properties: {
-        date: { type: "string", description: 'Fecha en formato YYYY-MM-DD (hora Argentina).' },
-        time: { type: "string", description: 'Hora en formato HH:mm (hora Argentina), ej. "15:30".' },
-        notes: {
-          type: "string",
-          description: "Detalle de la visita: propiedad/emprendimiento, dirección, motivo del encuentro.",
-        },
-        client_email: {
-          type: "string",
-          description: "Mail del cliente, para invitarlo al evento — opcional, si no lo dio no lo inventes.",
-        },
-      },
-      required: ["date", "time"],
-    },
-  },
 ];
+
+/**
+ * Arma check_visit_availability/book_visit con un enum de "rep_name" a
+ * partir de los comerciales cargados en /admin — mismo patrón que
+ * buildUpdateStageTool, así el agente elige entre nombres reales en vez de
+ * inventar uno.
+ */
+function buildVisitTools(): Anthropic.Tool[] {
+  const repNames = getSettings().visits.reps.map((r) => r.name);
+  const repNameProperty = {
+    type: "string" as const,
+    ...(repNames.length > 0 ? { enum: repNames } : {}),
+    description:
+      repNames.length > 0
+        ? "Si el cliente pidió específicamente a uno de estos comerciales, cuál — si no pidió a nadie en " +
+          "particular, no mandes este campo."
+        : "No hay comerciales cargados todavía (ver /admin).",
+  };
+
+  return [
+    {
+      name: "check_visit_availability",
+      description:
+        "Consulta los horarios libres para coordinar una visita o reunión en una fecha puntual, " +
+        "según los calendarios y el horario laboral configurados en /admin. Usala siempre antes de " +
+        "proponerle un horario al cliente — nunca inventes disponibilidad.",
+      input_schema: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: 'Fecha en formato YYYY-MM-DD (hora Argentina), ej. "2026-08-27".' },
+          rep_name: repNameProperty,
+        },
+        required: ["date"],
+      },
+    },
+    {
+      name: "book_visit",
+      description:
+        "Agenda una visita o reunión con el cliente actual en el calendario de un comercial libre en " +
+        "ese horario, en un horario que ya confirmaste como libre con check_visit_availability. No la " +
+        "uses sin haber confirmado antes la disponibilidad, ni sin que el cliente haya confirmado el " +
+        "horario. Antes de llamarla pedile el mail al cliente para poder invitarlo al evento — si no " +
+        "te lo quiere dar, agendá igual sin ese dato, no es bloqueante.",
+      input_schema: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: 'Fecha en formato YYYY-MM-DD (hora Argentina).' },
+          time: { type: "string", description: 'Hora en formato HH:mm (hora Argentina), ej. "15:30".' },
+          notes: {
+            type: "string",
+            description: "Detalle de la visita: propiedad/emprendimiento, dirección, motivo del encuentro.",
+          },
+          client_email: {
+            type: "string",
+            description: "Mail del cliente, para invitarlo al evento — opcional, si no lo dio no lo inventes.",
+          },
+          rep_name: repNameProperty,
+        },
+        required: ["date", "time"],
+      },
+    },
+  ];
+}
 
 const STATIC_TOOLS_AFTER_STAGE: Anthropic.Tool[] = [
   {
@@ -239,6 +263,7 @@ function buildEscalateToHumanTool(): Anthropic.Tool {
 export function getAgentTools(): Anthropic.Tool[] {
   return [
     ...STATIC_TOOLS_BEFORE_STAGE,
+    ...buildVisitTools(),
     buildUpdateStageTool(),
     ...STATIC_TOOLS_AFTER_STAGE,
     buildEscalateToHumanTool(),
@@ -411,6 +436,7 @@ export async function executeTool(
 
     case "check_visit_availability": {
       const date = input.date as string;
+      const repName = (input.rep_name as string | undefined)?.trim() || undefined;
       if (getSettings().visits.reps.length === 0) {
         return JSON.stringify({
           date,
@@ -418,11 +444,19 @@ export async function executeTool(
           reason: "No hay ningún comercial con calendario configurado todavía (ver /admin).",
         });
       }
+      if (repName && !findRepByName(repName)) {
+        return JSON.stringify({
+          date,
+          hasCalendar: true,
+          repNotFound: true,
+          knownReps: getSettings().visits.reps.map((r) => r.name),
+        });
+      }
       try {
-        const availableTimes = await getAvailableSlots(date);
-        return JSON.stringify({ date, hasCalendar: true, availableTimes });
+        const availableTimes = await getAvailableSlots(date, repName);
+        return JSON.stringify({ date, repName, hasCalendar: true, availableTimes });
       } catch (error) {
-        logger.error("calendar.availability_failed", { date, error: String(error) });
+        logger.error("calendar.availability_failed", { date, repName, error: String(error) });
         return JSON.stringify({ date, hasCalendar: true, error: "No se pudo consultar el calendario." });
       }
     }
@@ -432,6 +466,7 @@ export async function executeTool(
       const time = input.time as string;
       const notes = (input.notes as string | undefined)?.trim();
       const clientEmail = (input.client_email as string | undefined)?.trim() || undefined;
+      const repName = (input.rep_name as string | undefined)?.trim() || undefined;
       try {
         const result = await bookVisit({
           dateStr: date,
@@ -439,6 +474,7 @@ export async function executeTool(
           summary: `Visita: ${ctx.customerName}`,
           description: `Cliente: ${ctx.customerName} (${ctx.customerPhone})${notes ? `\n${notes}` : ""}`,
           clientEmail,
+          repName,
         });
         logger.info("agent.visit_booked", {
           customerPhone: ctx.customerPhone,
@@ -450,10 +486,10 @@ export async function executeTool(
         });
         return JSON.stringify({ booked: true, date, time, assigned_to: result.repName, invited: Boolean(clientEmail) });
       } catch (error) {
-        logger.error("calendar.book_visit_failed", { customerPhone: ctx.customerPhone, date, time, error: String(error) });
+        logger.error("calendar.book_visit_failed", { customerPhone: ctx.customerPhone, date, time, repName, error: String(error) });
         return JSON.stringify({
           booked: false,
-          reason: "No se pudo agendar la visita — puede que el calendario no esté configurado o que el horario ya no esté libre.",
+          reason: error instanceof Error ? error.message : "No se pudo agendar la visita.",
         });
       }
     }
