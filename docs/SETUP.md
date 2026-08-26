@@ -330,6 +330,21 @@ pero tampoco llegó nada, revisá que `PUBLIC_WEBHOOK_URL` sea alcanzable
 públicamente desde internet (no `localhost`) — Twilio necesita poder
 descargar el archivo desde ahí.
 
+> **PENDIENTE — ngrok gratis bloquea la descarga del `.ics`.** Si
+> `PUBLIC_WEBHOOK_URL` apunta a un túnel de ngrok en el plan gratuito, el
+> `errorCode` que vas a ver en `whatsapp.delivery_status` es `63019`
+> ("Media failed to download"): ngrok le muestra a Twilio su página de
+> advertencia intermedia ("You are about to visit...") en vez del
+> archivo, porque Twilio no puede "aceptarla" como haría un navegador y
+> nosotros no podemos mandarle un header custom a ese pedido (lo hace
+> Twilio del lado de ellos). El resto de la coordinación de visitas
+> funciona igual (se agenda en Calendar, se avisa al comercial); solo
+> falla la entrega del archivo al cliente. Salidas, sin tocar código:
+> pasar a un plan pago de ngrok, o cambiar a otro túnel sin esa pantalla
+> (ej. Cloudflare Tunnel: `cloudflared tunnel --url http://localhost:3000`,
+> gratis y sin login). Para producción de verdad, mejor un dominio propio
+> con hosting fijo en vez de un túnel.
+
 ### Pedir a alguien en particular
 
 Si el cliente pide específicamente a alguien ("quiero que me atienda
