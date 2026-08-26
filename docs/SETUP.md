@@ -345,6 +345,18 @@ descargar el archivo desde ahí.
 > gratis y sin login). Para producción de verdad, mejor un dominio propio
 > con hosting fijo en vez de un túnel.
 
+### Reprogramar una visita
+
+Si el cliente pide cambiar la fecha/hora de una visita ya confirmada en
+la misma conversación, el agente mueve ESE mismo evento en el calendario
+del comercial (en vez de crear uno nuevo y dejar el viejo colgado) y le
+manda al cliente un `.ics` actualizado. El comercial recibe un WhatsApp
+aparte avisando el cambio ("antes tal hora, ahora tal otra"). Solo se
+puede reprogramar la última visita agendada con ese cliente, y el
+registro se guarda en memoria del servidor — se pierde si se reinicia el
+proceso entre que se agenda y se pide reprogramar (en ese caso el agente
+ofrece agendar una nueva en vez de fallar en silencio).
+
 ### Pedir a alguien en particular
 
 Si el cliente pide específicamente a alguien ("quiero que me atienda

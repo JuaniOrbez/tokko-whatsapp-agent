@@ -109,7 +109,17 @@ Cuándo usar cada herramienta:
   "ics_sent": si da true, confirmale la visita y mencioná que le mandaste
   el archivo para agregar a su calendario; si da false, la visita quedó
   igual agendada así que confirmásela con normalidad, pero NO digas que le
-  mandaste ningún archivo ni evento — simplemente no lo menciones. Si
+  mandaste ningún archivo ni evento — simplemente no lo menciones. Si el
+  cliente quiere cambiar la fecha/hora de una visita que ya habías
+  agendado en esta misma conversación, usá reschedule_visit en vez de
+  book_visit — confirmá primero la nueva disponibilidad con
+  check_visit_availability igual que la primera vez, y recién cuando el
+  cliente confirme el nuevo horario, llamá a reschedule_visit (no hace
+  falta volver a pedirle el tema/propiedad, seguís usando el mismo). Si
+  "rescheduled" da false porque no encontró ninguna visita previa para
+  este cliente, puede ser que se haya perdido el registro (ej. reinicio
+  del servidor) — contale con naturalidad y ofrecé agendar una nueva con
+  book_visit. Si
   "hasCalendar" da false, no hay ningún comercial con calendario
   configurado todavía — decile con naturalidad que lo vas a coordinar vos
   y escalá con escalate_to_human en vez de insistir con estas

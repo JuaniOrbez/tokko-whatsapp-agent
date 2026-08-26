@@ -7,7 +7,7 @@ import { config } from "../config.js";
 import { getSettings } from "../settings.js";
 import { escalateToHumans } from "./escalation.js";
 import { appendToolUsage } from "./toolUsageLog.js";
-import { getAvailableSlots, bookVisit, findMatchingReps } from "../calendar/client.js";
+import { getAvailableSlots, bookVisit, rescheduleVisit, findMatchingReps } from "../calendar/client.js";
 import { storeIcs } from "../calendar/icsStore.js";
 
 export interface AgentContext {
@@ -204,6 +204,25 @@ function buildVisitTools(): Anthropic.Tool[] {
           rep_name: repNameProperty,
         },
         required: ["date", "time", "notes"],
+      },
+    },
+    {
+      name: "reschedule_visit",
+      description:
+        "Cambia la fecha/hora de la visita o reunión que ya quedó agendada con este cliente en esta " +
+        "conversación (la última que se agendó, si hubo más de una). Usala en vez de book_visit cuando " +
+        "el cliente pida reprogramar algo que ya estaba confirmado — mueve el mismo evento en el " +
+        "calendario del comercial en vez de crear uno nuevo, y le manda al cliente un archivo de " +
+        "calendario actualizado. Confirmá primero la nueva disponibilidad con check_visit_availability, " +
+        "igual que al agendar por primera vez (pasando el mismo rep_name, si el comercial ya asignado " +
+        "aparece ahí).",
+      input_schema: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: 'Nueva fecha en formato YYYY-MM-DD (hora Argentina).' },
+          time: { type: "string", description: 'Nueva hora en formato HH:mm (hora Argentina), ej. "15:30".' },
+        },
+        required: ["date", "time"],
       },
     },
   ];
@@ -483,6 +502,7 @@ export async function executeTool(
       const repName = (input.rep_name as string | undefined)?.trim() || undefined;
       try {
         const result = await bookVisit({
+          customerPhone: ctx.customerPhone,
           dateStr: date,
           time,
           summary: `Visita: ${ctx.customerName}`,
@@ -530,6 +550,58 @@ export async function executeTool(
         return JSON.stringify({
           booked: false,
           reason: error instanceof Error ? error.message : "No se pudo agendar la visita.",
+        });
+      }
+    }
+
+    case "reschedule_visit": {
+      const date = input.date as string;
+      const time = input.time as string;
+      try {
+        const result = await rescheduleVisit({ customerPhone: ctx.customerPhone, dateStr: date, time });
+        logger.info("agent.visit_rescheduled", {
+          customerPhone: ctx.customerPhone,
+          date,
+          time,
+          eventId: result.eventId,
+          rep: result.repName,
+        });
+
+        let icsSent = false;
+        if (config.PUBLIC_WEBHOOK_URL) {
+          try {
+            const icsId = storeIcs(result.icsContent);
+            const icsUrl = `${new URL(config.PUBLIC_WEBHOOK_URL).origin}/ics/${icsId}`;
+            logger.info("agent.visit_ics_url", { icsUrl });
+            await sendDocumentByLink(
+              ctx.customerPhone,
+              icsUrl,
+              "visita.ics",
+              "📅 Che, actualizamos el evento con el nuevo horario.",
+            );
+            icsSent = true;
+          } catch (error) {
+            logger.warn("agent.visit_ics_send_failed", { customerPhone: ctx.customerPhone, error: String(error) });
+          }
+        }
+
+        if (result.repPhone) {
+          const notifyText =
+            `🔄 Visita reprogramada\n` +
+            `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
+            `Antes: ${result.previousDateStr} ${result.previousTime}\n` +
+            `Ahora: ${date} ${time}`;
+          sendText(result.repPhone, notifyText).catch((error) => {
+            logger.warn("agent.visit_notify_failed", { rep: result.repName, error: String(error) });
+          });
+        }
+
+        return JSON.stringify({ rescheduled: true, date, time, assigned_to: result.repName, ics_sent: icsSent });
+      } catch (error) {
+        logger.error("calendar.reschedule_visit_failed", { customerPhone: ctx.customerPhone, date, time, error: String(error) });
+        return JSON.stringify({
+          rescheduled: false,
+          reason: error instanceof Error ? error.message : "No se pudo reprogramar la visita.",
         });
       }
     }

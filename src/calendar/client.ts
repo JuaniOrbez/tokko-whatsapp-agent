@@ -136,6 +136,7 @@ async function findFreeRepAmong(reps: TeamMember[], start: Date, end: Date): Pro
 }
 
 export interface BookVisitInput {
+  customerPhone: string;
   dateStr: string; // YYYY-MM-DD, hora Argentina
   time: string; // HH:mm, hora Argentina
   summary: string;
@@ -145,6 +146,23 @@ export interface BookVisitInput {
   // avisar.
   repName?: string;
 }
+
+interface LastBooking {
+  eventId: string;
+  calendarId: string;
+  repName: string;
+  repPhone: string;
+  dateStr: string;
+  time: string;
+  summary: string;
+  description: string;
+}
+
+// Última visita agendada por cliente (en memoria, se pierde si el proceso
+// reinicia) — permite que rescheduleVisit mueva ESE evento en vez de crear
+// uno nuevo. Si un cliente llegó a tener más de una visita agendada en la
+// conversación, solo se puede reprogramar la más reciente.
+const lastBookings = new Map<string, LastBooking>();
 
 export interface BookVisitResult {
   eventId: string;
@@ -228,11 +246,103 @@ export async function bookVisit(input: BookVisitInput): Promise<BookVisitResult>
     organizerEmail: rep.email || undefined,
   });
 
+  lastBookings.set(input.customerPhone, {
+    eventId,
+    calendarId: rep.calendarId,
+    repName: rep.name,
+    repPhone: rep.phone,
+    dateStr: input.dateStr,
+    time: input.time,
+    summary: input.summary,
+    description: input.description,
+  });
+
   return {
     eventId,
     htmlLink: res.data.htmlLink ?? undefined,
     repName: rep.name,
     repPhone: rep.phone,
     icsContent,
+  };
+}
+
+export interface RescheduleVisitInput {
+  customerPhone: string;
+  dateStr: string; // YYYY-MM-DD, hora Argentina
+  time: string; // HH:mm, hora Argentina
+}
+
+export interface RescheduleVisitResult {
+  eventId: string;
+  repName: string;
+  repPhone: string;
+  icsContent: string;
+  previousDateStr: string;
+  previousTime: string;
+}
+
+/**
+ * Mueve la última visita agendada con este cliente (ver lastBookings) a una
+ * fecha/hora nueva, en vez de crear un evento aparte — mismo comercial,
+ * mismo eventId de Calendar. Tira si no hay ninguna visita previa
+ * registrada para este cliente, si la fecha/hora nueva no es válida, o si
+ * el comercial ya no está libre a esa hora.
+ */
+export async function rescheduleVisit(input: RescheduleVisitInput): Promise<RescheduleVisitResult> {
+  const previous = lastBookings.get(input.customerPhone);
+  if (!previous) {
+    throw new Error("No encontré ninguna visita agendada con este cliente para reprogramar.");
+  }
+  const settings = getSettings().visits;
+  if (!settings.businessDays.includes(weekdayOf(input.dateStr))) {
+    throw new Error(`${input.dateStr} no es un día laboral configurado para coordinar visitas.`);
+  }
+  const [hourStr, minuteStr] = input.time.split(":");
+  const hour = Number(hourStr);
+  const minute = Number(minuteStr ?? "0");
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    throw new Error(`Hora inválida: "${input.time}"`);
+  }
+  const start = argentinaLocalToUtc(input.dateStr, hour, minute);
+  const end = new Date(start.getTime() + settings.durationMinutes * 60 * 1000);
+
+  // No excluye el propio evento del chequeo (freebusy no da IDs, solo
+  // franjas) — en la práctica no es problema porque la fecha/hora nueva
+  // casi siempre difiere de la vieja; si coincidieran, el propio evento se
+  // vería como "ocupado" y bloquearía el reschedule sin necesidad.
+  const busy = await getBusyRanges(previous.calendarId, start, end);
+  const overlapsBusy = busy.some((b) => start < b.end && end > b.start);
+  if (overlapsBusy) {
+    throw new Error(`${previous.repName} ya no está libre en ese horario.`);
+  }
+
+  await calendar.events.patch({
+    calendarId: previous.calendarId,
+    eventId: previous.eventId,
+    requestBody: {
+      start: { dateTime: start.toISOString(), timeZone: TIME_ZONE },
+      end: { dateTime: end.toISOString(), timeZone: TIME_ZONE },
+    },
+  });
+
+  const rep = getSettings().team.find((m) => m.name === previous.repName);
+  const icsContent = buildIcsEvent({
+    uid: `${previous.eventId}@ismo-propiedades`,
+    start,
+    end,
+    summary: previous.summary,
+    description: previous.description,
+    organizerEmail: rep?.email || undefined,
+  });
+
+  lastBookings.set(input.customerPhone, { ...previous, dateStr: input.dateStr, time: input.time });
+
+  return {
+    eventId: previous.eventId,
+    repName: previous.repName,
+    repPhone: previous.repPhone,
+    icsContent,
+    previousDateStr: previous.dateStr,
+    previousTime: previous.time,
   };
 }
