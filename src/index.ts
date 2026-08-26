@@ -3,6 +3,7 @@ import { config } from "./config.js";
 import { logger } from "./logger.js";
 import { webhookRouter } from "./whatsapp/webhook.js";
 import { adminRouter } from "./admin/router.js";
+import { icsRouter } from "./calendar/icsRouter.js";
 import { startScheduler } from "./scheduler.js";
 
 const app = express();
@@ -16,6 +17,7 @@ app.get("/health", (_req, res) => {
 
 app.use(webhookRouter);
 app.use(adminRouter);
+app.use(icsRouter);
 
 app.listen(config.PORT, () => {
   logger.info("server.started", { port: config.PORT });

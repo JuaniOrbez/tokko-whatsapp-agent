@@ -1,7 +1,9 @@
+import crypto from "node:crypto";
 import { google } from "googleapis";
 import { config } from "../config.js";
 import { getSettings } from "../settings.js";
 import type { TeamMember } from "../settings.js";
+import { buildIcsEvent } from "./ics.js";
 
 /**
  * Coordinación de visitas/reuniones contra Google Calendar, con la misma
@@ -138,9 +140,6 @@ export interface BookVisitInput {
   time: string; // HH:mm, hora Argentina
   summary: string;
   description: string;
-  // Si se carga, se invita a esta dirección al evento (Calendar le manda
-  // la invitación directo) — opcional, el cliente puede no querer darlo.
-  clientEmail?: string;
   // Si el cliente pidió a alguien puntual por nombre — si no está libre
   // (o no se encuentra), bookVisit tira en vez de asignarle a otro sin
   // avisar.
@@ -154,6 +153,12 @@ export interface BookVisitResult {
   // Vacío si esa persona no cargó teléfono — el llamador decide si avisa
   // por WhatsApp o no.
   repPhone: string;
+  // .ics del evento (RFC 5545) — el llamador decide cómo mandárselo al
+  // cliente (ver tools.ts, que lo sube y lo manda como adjunto de
+  // WhatsApp). No se usa la invitación por mail de Calendar: con una
+  // cuenta de servicio sobre un Gmail personal (sin Google Workspace),
+  // Calendar acepta el attendee pero no manda el mail de invitación.
+  icsContent: string;
 }
 
 /**
@@ -205,20 +210,28 @@ export async function bookVisit(input: BookVisitInput): Promise<BookVisitResult>
 
   const res = await calendar.events.insert({
     calendarId: rep.calendarId,
-    sendUpdates: input.clientEmail ? "all" : undefined,
     requestBody: {
       summary: input.summary,
       description: input.description,
       start: { dateTime: start.toISOString(), timeZone: TIME_ZONE },
       end: { dateTime: end.toISOString(), timeZone: TIME_ZONE },
-      attendees: input.clientEmail ? [{ email: input.clientEmail }] : undefined,
     },
   });
 
+  const eventId = res.data.id ?? "";
+  const icsContent = buildIcsEvent({
+    uid: `${eventId || crypto.randomUUID()}@ismo-propiedades`,
+    start,
+    end,
+    summary: input.summary,
+    description: input.description,
+  });
+
   return {
-    eventId: res.data.id ?? "",
+    eventId,
     htmlLink: res.data.htmlLink ?? undefined,
     repName: rep.name,
     repPhone: rep.phone,
+    icsContent,
   };
 }

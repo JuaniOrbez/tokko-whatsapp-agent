@@ -301,12 +301,21 @@ mensaje saliente más, usa el mismo `TWILIO_WHATSAPP_FROM` de siempre
 (mientras estés en el sandbox, ese número también tiene que sumarse
 mandando `join <palabra-clave>`).
 
-### Invitar al cliente por mail
+### El cliente recibe el evento por WhatsApp
 
-Antes de agendar, el agente le pide el mail al cliente (si no lo quiere
-dar, agenda igual sin ese dato). Si lo tiene, lo carga como invitado del
-evento — Google Calendar le manda la invitación automáticamente apenas se
-crea, sin que haya que hacer nada más de este lado.
+Apenas se agenda, el agente le manda al cliente un archivo de calendario
+(`.ics`) como adjunto de WhatsApp — lo abre y se le carga solo en el
+calendario que use (Google, iPhone, Outlook), sin pedirle ningún dato
+extra. No se usa la invitación por mail nativa de Google Calendar: con
+una cuenta de servicio sobre un Gmail personal (sin Google Workspace),
+Calendar acepta agregar un invitado al evento pero **no manda** el mail
+de invitación — es una limitación de la API, no un bug de acá.
+
+El `.ics` se genera al vuelo y se sirve desde el propio servidor
+(`GET /ics/:id`, ver `src/calendar/icsRouter.ts`) para que Twilio pueda
+descargarlo y adjuntarlo — por eso esto necesita `PUBLIC_WEBHOOK_URL`
+configurado en `.env` (el mismo que ya usás para el webhook). Sin esa
+variable, la visita se agenda igual, simplemente no se manda el archivo.
 
 ### Pedir a alguien en particular
 

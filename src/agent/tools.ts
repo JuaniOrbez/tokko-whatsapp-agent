@@ -3,10 +3,12 @@ import { tokkoClient } from "../tokko/client.js";
 import { findFilesByName, findZonapropLink } from "../drive/client.js";
 import { sendDocumentByLink, sendText } from "../whatsapp/client.js";
 import { logger } from "../logger.js";
+import { config } from "../config.js";
 import { getSettings } from "../settings.js";
 import { escalateToHumans } from "./escalation.js";
 import { appendToolUsage } from "./toolUsageLog.js";
 import { getAvailableSlots, bookVisit, findMatchingReps } from "../calendar/client.js";
+import { storeIcs } from "../calendar/icsStore.js";
 
 export interface AgentContext {
   customerPhone: string;
@@ -185,8 +187,8 @@ function buildVisitTools(): Anthropic.Tool[] {
         "Agenda una visita o reunión con el cliente actual en el calendario de un comercial libre en " +
         "ese horario, en un horario que ya confirmaste como libre con check_visit_availability. No la " +
         "uses sin haber confirmado antes la disponibilidad, ni sin que el cliente haya confirmado el " +
-        "horario. Antes de llamarla pedile el mail al cliente para poder invitarlo al evento — si no " +
-        "te lo quiere dar, agendá igual sin ese dato, no es bloqueante.",
+        "horario. Al agendar, el cliente recibe automáticamente un archivo de calendario por WhatsApp " +
+        "para agregar el evento a su calendario — no hace falta pedirle ningún dato para eso.",
       input_schema: {
         type: "object",
         properties: {
@@ -195,10 +197,6 @@ function buildVisitTools(): Anthropic.Tool[] {
           notes: {
             type: "string",
             description: "Detalle de la visita: propiedad/emprendimiento, dirección, motivo del encuentro.",
-          },
-          client_email: {
-            type: "string",
-            description: "Mail del cliente, para invitarlo al evento — opcional, si no lo dio no lo inventes.",
           },
           rep_name: repNameProperty,
         },
@@ -479,7 +477,6 @@ export async function executeTool(
       const date = input.date as string;
       const time = input.time as string;
       const notes = (input.notes as string | undefined)?.trim();
-      const clientEmail = (input.client_email as string | undefined)?.trim() || undefined;
       const repName = (input.rep_name as string | undefined)?.trim() || undefined;
       try {
         const result = await bookVisit({
@@ -487,7 +484,6 @@ export async function executeTool(
           time,
           summary: `Visita: ${ctx.customerName}`,
           description: `Cliente: ${ctx.customerName} (${ctx.customerPhone})${notes ? `\n${notes}` : ""}`,
-          clientEmail,
           repName,
         });
         logger.info("agent.visit_booked", {
@@ -496,11 +492,23 @@ export async function executeTool(
           time,
           eventId: result.eventId,
           rep: result.repName,
-          invited: Boolean(clientEmail),
         });
 
-        // Best-effort: si falla el aviso, la visita ya quedó agendada en el
-        // calendario igual — no hace falta que le pese al cliente.
+        // Ambos avisos son best-effort: si fallan, la visita ya quedó
+        // agendada en el calendario igual — no hace falta que le pese al
+        // cliente ni al comercial.
+        let icsSent = false;
+        if (config.PUBLIC_WEBHOOK_URL) {
+          try {
+            const icsId = storeIcs(result.icsContent);
+            const icsUrl = `${new URL(config.PUBLIC_WEBHOOK_URL).origin}/ics/${icsId}`;
+            await sendDocumentByLink(ctx.customerPhone, icsUrl, "visita.ics", "📅 Acá tenés el evento para agregarlo a tu calendario.");
+            icsSent = true;
+          } catch (error) {
+            logger.warn("agent.visit_ics_send_failed", { customerPhone: ctx.customerPhone, error: String(error) });
+          }
+        }
+
         if (result.repPhone) {
           const notifyText =
             `📅 Nueva visita agendada\n` +
@@ -512,7 +520,7 @@ export async function executeTool(
           });
         }
 
-        return JSON.stringify({ booked: true, date, time, assigned_to: result.repName, invited: Boolean(clientEmail) });
+        return JSON.stringify({ booked: true, date, time, assigned_to: result.repName, ics_sent: icsSent });
       } catch (error) {
         logger.error("calendar.book_visit_failed", { customerPhone: ctx.customerPhone, date, time, repName, error: String(error) });
         return JSON.stringify({
