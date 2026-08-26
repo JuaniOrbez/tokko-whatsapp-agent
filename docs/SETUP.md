@@ -315,7 +315,20 @@ El `.ics` se genera al vuelo y se sirve desde el propio servidor
 (`GET /ics/:id`, ver `src/calendar/icsRouter.ts`) para que Twilio pueda
 descargarlo y adjuntarlo — por eso esto necesita `PUBLIC_WEBHOOK_URL`
 configurado en `.env` (el mismo que ya usás para el webhook). Sin esa
-variable, la visita se agenda igual, simplemente no se manda el archivo.
+variable, la visita se agenda igual, simplemente no se manda el archivo, y
+el agente no le va a decir al cliente que se lo mandó.
+
+**Si el archivo no llega aunque `PUBLIC_WEBHOOK_URL` esté bien
+configurado**: mandarlo es un paso aparte de agendar la visita en
+Calendar (que sí queda hecho siempre) y puede fallar del lado de Twilio
+de forma asíncrona — recién se entera el servidor un rato después, no en
+el momento. Buscá en la terminal del servidor una línea
+`"whatsapp.delivery_status"` con `status` en `failed` o `undelivered`
+(trae `errorCode`/`errorMessage` de Twilio) cerca del horario en que se
+agendó la visita — ese es el motivo real. Si no aparece ninguna línea así
+pero tampoco llegó nada, revisá que `PUBLIC_WEBHOOK_URL` sea alcanzable
+públicamente desde internet (no `localhost`) — Twilio necesita poder
+descargar el archivo desde ahí.
 
 ### Pedir a alguien en particular
 

@@ -36,13 +36,13 @@ function validateTwilioSignature(req: Request, res: Response, next: NextFunction
     return;
   }
 
+  // PUBLIC_WEBHOOK_URL apunta a /webhook, pero esta misma validación también
+  // se usa para /webhook/status — hay que armar la URL real de cada pedido
+  // (Twilio firma contra la URL exacta a la que le pega), no siempre la de
+  // /webhook.
+  const url = `${new URL(config.PUBLIC_WEBHOOK_URL).origin}${req.originalUrl}`;
   const signature = req.header("x-twilio-signature") ?? "";
-  const valid = twilio.validateRequest(
-    config.TWILIO_AUTH_TOKEN,
-    signature,
-    config.PUBLIC_WEBHOOK_URL,
-    req.body as Record<string, string>,
-  );
+  const valid = twilio.validateRequest(config.TWILIO_AUTH_TOKEN, signature, url, req.body as Record<string, string>);
 
   if (!valid) {
     logger.warn("whatsapp.invalid_signature");
@@ -91,6 +91,28 @@ webhookRouter.post("/webhook", validateTwilioSignature, (req: Request, res: Resp
   handleIncomingMessage({ from, name: senderName, text, channel }).catch((error) => {
     logger.error("agent.handle_message_failed", { from, error: String(error) });
   });
+});
+
+// Callback de estado de entrega que Twilio pega para los mensajes que se
+// mandan con statusCallback (por ahora, los documentos por link — ver
+// sendDocumentByLink). messages.create() solo confirma que Twilio aceptó el
+// pedido; si el archivo en sí no llega (tipo de media no soportado, etc.)
+// se entera recién acá, de forma asíncrona, con MessageStatus=failed/
+// undelivered y el ErrorCode/ErrorMessage correspondiente.
+webhookRouter.post("/webhook/status", validateTwilioSignature, (req: Request, res: Response) => {
+  res.sendStatus(200);
+  const body = req.body as Record<string, string>;
+  const status = body.MessageStatus;
+  if (status === "failed" || status === "undelivered") {
+    logger.warn("whatsapp.delivery_status", {
+      to: body.To,
+      status,
+      errorCode: body.ErrorCode,
+      errorMessage: body.ErrorMessage,
+    });
+  } else {
+    logger.info("whatsapp.delivery_status", { to: body.To, status });
+  }
 });
 
 // De dónde vino la consulta, a partir del primer mensaje entrante. Meta manda

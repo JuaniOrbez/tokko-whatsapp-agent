@@ -73,11 +73,20 @@ export async function sendDocumentByLink(
   caption?: string,
 ): Promise<void> {
   logger.info("whatsapp.send_document", { to, filename });
+  // messages.create() solo confirma que Twilio aceptó el pedido — si el
+  // documento en sí no llega (media rechazado, tipo no soportado, etc.) eso
+  // se sabe recién después, de forma asíncrona, en el status callback (ver
+  // "whatsapp.delivery_status" en webhook.ts). Sin PUBLIC_WEBHOOK_URL no
+  // hay adónde mandarlo, así que esos fallos quedan sin loguear.
+  const statusCallback = config.PUBLIC_WEBHOOK_URL
+    ? `${new URL(config.PUBLIC_WEBHOOK_URL).origin}/webhook/status`
+    : undefined;
   await client.messages.create({
     from: config.TWILIO_WHATSAPP_FROM,
     to: toWhatsAppAddress(to),
     body: caption,
     mediaUrl: [link],
+    ...(statusCallback ? { statusCallback } : {}),
   });
 }
 
