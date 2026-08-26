@@ -208,17 +208,19 @@ alguien del equipo por WhatsApp cuando no puede resolver una consulta. Es
 un mensaje saliente más, así que usa el mismo `TWILIO_WHATSAPP_FROM` que ya
 configuraste.
 
-1. En **`/admin/config`** (sección "Números de contacto"), cargá el/los
-   número/s del equipo en formato E.164 (ej. `+5491122334455`), uno por
-   fila, con **nombre** opcional (solo para identificar de quién es cada
-   número, no cambia el comportamiento) y **motivo** opcional (ej.
-   "Consultas técnicas", "Consultas generales").
+1. En **`/admin/config`** (sección "Equipo" — la misma lista que se usa
+   para coordinar visitas, ver punto 5), cargá una fila por persona:
+   **nombre** (con apellido si hay otra con el mismo nombre de pila),
+   **teléfono** en formato E.164 (ej. `+5491122334455`, el único campo
+   obligatorio) y **motivo** opcional (ej. "Consultas técnicas",
+   "Consultas generales") — mail y calendario son para la parte de
+   visitas, no hacen falta solo para escalar.
 2. El motivo le sirve al agente para elegir a quién avisar: cuando escala,
    además de la pregunta del cliente elige una categoría (armada
    dinámicamente a partir de los motivos que hayas cargado, igual que las
-   etapas de Tokko) y avisa solo a los contactos con ese motivo exacto. Si
-   dejás el motivo vacío, ese número recibe lo que no matchee ninguna
-   categoría específica — y si ningún contacto tiene el motivo elegido (o
+   etapas de Tokko) y avisa solo a las personas con ese motivo exacto. Si
+   dejás el motivo vacío, esa persona recibe lo que no matchee ninguna
+   categoría específica — y si nadie tiene el motivo elegido (o
    directamente no cargaste motivos), avisa a todos, para que la consulta
    nunca quede sin nadie enterado.
 3. **No es un grupo de WhatsApp**: la WhatsApp Business API (ni vía Twilio
@@ -250,11 +252,11 @@ horas si nadie contesta.
 ## 5. Google Calendar (coordinar visitas y reuniones)
 
 El agente puede consultar horarios libres y agendar una visita/reunión
-directamente en el calendario de un comercial, con la **misma cuenta de
-servicio** que ya creaste para Drive (no hace falta crear una nueva ni
-generar otra clave JSON). Cada comercial tiene su propio calendario — el
-agente cruza la disponibilidad de todos antes de ofrecer un horario, y
-agenda en el de uno que esté libre justo en ese momento.
+directamente en el calendario de alguien del equipo, con la **misma
+cuenta de servicio** que ya creaste para Drive (no hace falta crear una
+nueva ni generar otra clave JSON). Cada persona tiene su propio
+calendario — el agente cruza la disponibilidad de todos antes de ofrecer
+un horario, y agenda en el de quien esté libre justo en ese momento.
 
 1. En [Google Cloud Console](https://console.cloud.google.com), en el
    mismo proyecto que usaste para Drive, habilitá también la **Google
@@ -262,8 +264,8 @@ agenda en el de uno que esté libre justo en ese momento.
    veces el primer intento tira un error genérico — probá de nuevo, y si
    persiste fijate que el proyecto tenga una cuenta de facturación
    vinculada (activar la prueba gratuita alcanza, no tiene costo).
-2. **Por cada comercial** que quieras que reciba visitas coordinadas por
-   el agente, en [Google Calendar](https://calendar.google.com) con la
+2. **Por cada persona** que quieras que reciba visitas coordinadas por el
+   agente, en [Google Calendar](https://calendar.google.com) con la
    cuenta de esa persona:
    1. Creá un calendario nuevo (recomendado, así no se mezcla con el
       personal) — engranaje ⚙️ → "Crear un calendario nuevo", con su
@@ -276,27 +278,28 @@ agenda en el de uno que esté libre justo en ese momento.
       cambios en los eventos"**.
    3. En esa misma pantalla, bajá hasta "Integrar calendario" y copiá el
       **ID de calendario** (termina en `@group.calendar.google.com`).
-3. En `/admin/config`, sección "Visitas / Reuniones", cargá una fila por
-   comercial: nombre, **su WhatsApp** (para que el agente le avise cuando
-   se le agende una visita — ver más abajo), mail opcional, y el ID de
-   calendario de ese paso. Ahí mismo se configura la duración de cada
-   visita y el horario laboral (hora Argentina) dentro del cual el agente
-   ofrece y agenda horarios.
+3. En `/admin/config`, sección **"Equipo"** (la misma lista del punto 4),
+   completá el campo "Calendario" de esa fila con el ID de ese paso — si
+   la persona ya estaba cargada por el escalamiento, sumale el
+   calendario ahí mismo, no hace falta una fila aparte. Sección "Visitas
+   / Reuniones": ahí se configura la duración de cada visita, el horario
+   laboral (hora Argentina) y los **días de la semana** en los que se
+   puede agendar (por defecto los 7 días — destildá los que no quieras
+   habilitar, ej. fines de semana).
 
-Sin ningún comercial cargado, `check_visit_availability`/`book_visit`
+Sin nadie con calendario cargado, `check_visit_availability`/`book_visit`
 simplemente le dicen al agente que no hay calendario configurado — sigue
 funcionando todo lo demás con normalidad, y el agente escala a un humano
 en vez de insistir con coordinar la visita él mismo.
 
-### Avisarle al comercial por WhatsApp
+### Avisarle a la persona asignada por WhatsApp
 
-Apenas se agenda una visita, el agente le manda un WhatsApp al comercial
-asignado (al número cargado en su fila) con los datos del cliente, la
-fecha/hora y el detalle que haya dado. Si ese comercial no tiene teléfono
-cargado, la visita se agenda igual — simplemente no se le avisa a nadie.
-Es un mensaje saliente más, usa el mismo `TWILIO_WHATSAPP_FROM` de
-siempre (mientras estés en el sandbox, ese número también tiene que
-sumarse mandando `join <palabra-clave>`).
+Apenas se agenda una visita, el agente le manda un WhatsApp a quien haya
+quedado asignado (al teléfono cargado en su fila del Equipo) con los
+datos del cliente, la fecha/hora y el detalle que haya dado. Es un
+mensaje saliente más, usa el mismo `TWILIO_WHATSAPP_FROM` de siempre
+(mientras estés en el sandbox, ese número también tiene que sumarse
+mandando `join <palabra-clave>`).
 
 ### Invitar al cliente por mail
 
@@ -305,16 +308,17 @@ dar, agenda igual sin ese dato). Si lo tiene, lo carga como invitado del
 evento — Google Calendar le manda la invitación automáticamente apenas se
 crea, sin que haya que hacer nada más de este lado.
 
-### Pedir un comercial en particular
+### Pedir a alguien en particular
 
 Si el cliente pide específicamente a alguien ("quiero que me atienda
-Martín"), el agente busca ese nombre entre los comerciales cargados (sin
-importar mayúsculas/acentos) y solo mira/agenda en su calendario — si esa
-persona no está libre en el horario elegido, no la reemplaza por otra sin
-avisar, le cuenta al cliente y propone alternativas. **Si hay dos
-comerciales con el mismo nombre de pila**, cargá también el apellido en
-el campo "Nombre" (ej. "Martín Pérez" y "Martín Gómez") — si el cliente
-solo dice "Martín" y hay más de uno que coincide, el agente no elige por
+Martín"), el agente busca ese nombre entre quienes tienen calendario
+cargado (sin importar mayúsculas/acentos) y solo mira/agenda en su
+calendario — si esa persona no está libre en el horario elegido, no la
+reemplaza por otra sin avisar, le cuenta al cliente y propone
+alternativas. **Si hay dos personas con el mismo nombre de pila**, cargá
+también el apellido en el campo "Nombre" de la sección "Equipo" (ej.
+"Martín Pérez" y "Martín Gómez") — si el cliente solo dice "Martín" y hay
+más de uno que coincide, el agente no elige por
 su cuenta: le pide que aclare cuál.
 
 ## 6. Claude (Anthropic)
@@ -343,13 +347,14 @@ edita desde el navegador, en caliente, sin tocar la terminal:
    - **Métricas** (`/admin/metrics`): consultas por día, canal de origen,
      emprendimiento y tipología — ver más abajo.
    - **Configuración** (`/admin/config`): donde se edita todo lo que antes
-     había que tocar a mano en `.env` y reiniciar el servidor — los
-     números de escalamiento (con su motivo), la carpeta y el archivo de
-     links de Zonaprop en Drive, los IDs de Tokko (operación
-     venta/alquiler y las etapas del workflow de Oportunidades — podés
-     agregar, sacar o renombrar etapas libremente, no es una lista fija) y
-     el calendario/horario laboral para coordinar visitas. Al guardar, los
-     cambios aplican al toque, sin reiniciar nada.
+     había que tocar a mano en `.env` y reiniciar el servidor — el equipo
+     (nombre, teléfono, mail, calendario y motivo de escalamiento de cada
+     persona), la carpeta y el archivo de links de Zonaprop en Drive, los
+     IDs de Tokko (operación venta/alquiler y las etapas del workflow de
+     Oportunidades — podés agregar, sacar o renombrar etapas libremente,
+     no es una lista fija), y la duración/horario/días laborales para
+     coordinar visitas. Al guardar, los cambios aplican al toque, sin
+     reiniciar nada.
    - **Ver conversaciones** (`/admin/conversations`): historial y mapa de
      cada charla — ver más abajo.
    - **Resumen de hoy** (`/admin/daily-summary`): ver más abajo.

@@ -150,7 +150,9 @@ const STATIC_TOOLS_BEFORE_STAGE: Anthropic.Tool[] = [
  * inventar uno.
  */
 function buildVisitTools(): Anthropic.Tool[] {
-  const repNames = getSettings().visits.reps.map((r) => r.name);
+  const repNames = getSettings()
+    .team.filter((m) => m.calendarId)
+    .map((r) => r.name);
   const repNameProperty = {
     type: "string" as const,
     ...(repNames.length > 0 ? { enum: repNames } : {}),
@@ -231,7 +233,7 @@ const STATIC_TOOLS_AFTER_STAGE: Anthropic.Tool[] = [
  * texto libre configurable.
  */
 function buildEscalateToHumanTool(): Anthropic.Tool {
-  const categories = [...new Set(getSettings().escalationContacts.map((c) => c.reason).filter(Boolean))];
+  const categories = [...new Set(getSettings().team.map((c) => c.reason).filter(Boolean))];
   return {
     name: "escalate_to_human",
     description:
@@ -437,11 +439,12 @@ export async function executeTool(
     case "check_visit_availability": {
       const date = input.date as string;
       const repName = (input.rep_name as string | undefined)?.trim() || undefined;
-      if (getSettings().visits.reps.length === 0) {
+      const visitReps = getSettings().team.filter((m) => m.calendarId);
+      if (visitReps.length === 0) {
         return JSON.stringify({
           date,
           hasCalendar: false,
-          reason: "No hay ningún comercial con calendario configurado todavía (ver /admin).",
+          reason: "No hay nadie del equipo con calendario configurado todavía (ver /admin).",
         });
       }
       if (repName) {
@@ -451,7 +454,7 @@ export async function executeTool(
             date,
             hasCalendar: true,
             repNotFound: true,
-            knownReps: getSettings().visits.reps.map((r) => r.name),
+            knownReps: visitReps.map((r) => r.name),
           });
         }
         if (matches.length > 1) {

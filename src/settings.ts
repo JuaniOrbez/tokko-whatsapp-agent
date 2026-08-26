@@ -13,37 +13,30 @@ export interface TokkoStage {
   tokkoId?: number;
 }
 
-export interface EscalationContact {
-  // Solo informativo (quién es este número) — no se usa para elegir a
-  // quién escalar, eso lo decide "reason". Puede quedar vacío.
-  name: string;
-  phone: string;
-  // Motivo/categoría de este contacto (ej. "Consultas técnicas"), texto
-  // libre — el agente elige a cuál avisar según el motivo de la consulta
-  // (ver tools.ts#buildEscalateToHumanTool, que arma el enum de la
-  // herramienta a partir de los motivos cargados acá). Vacío = comodín:
-  // ese número recibe lo que no matchee ningún motivo específico.
-  reason: string;
-}
-
-export interface SalesRep {
-  // Si hay más de un comercial con el mismo nombre de pila, cargá también
+export interface TeamMember {
+  // Si hay más de una persona con el mismo nombre de pila, cargá también
   // el apellido acá (ej. "Martín Pérez") — es el único campo por el que
-  // el cliente puede pedir a alguien en particular (ver
-  // calendar/client.ts#findMatchingReps), y si el nombre pedido matchea a
-  // más de uno, el agente no adivina: le pide al cliente que aclare.
+  // el cliente puede pedir a alguien en particular para una visita (ver
+  // calendar/client.ts#findMatchingReps); si el nombre pedido matchea a
+  // más de una, el agente no adivina: le pide al cliente que aclare.
   name: string;
-  // WhatsApp de este comercial (E.164) — al agendarle una visita, el
-  // agente le manda un aviso ahí. Si se deja vacío, la visita se agenda
-  // igual, simplemente no se le notifica a nadie.
+  // WhatsApp (E.164) — recibe los avisos de escalate_to_human/share_file
+  // (según "reason") y, si tiene calendario cargado, el aviso de visitas
+  // nuevas agendadas ahí. No puede ser un grupo, la API de WhatsApp no lo
+  // permite.
   phone: string;
-  // Opcional — si se carga, se usa como referencia interna (no se le manda
-  // nada automáticamente a este mail, solo al del cliente).
+  // Opcional — solo referencia interna, no se le manda nada automático.
   email: string;
-  // Calendario personal de este comercial, compartido con la cuenta de
-  // servicio ("Hacer cambios en los eventos") — ver docs/SETUP.md. El
-  // agente chequea disponibilidad y agenda ahí, no en un calendario único.
+  // Calendario personal compartido con la cuenta de servicio ("Hacer
+  // cambios en los eventos", ver docs/SETUP.md). Vacío = esta persona no
+  // participa en la coordinación de visitas, solo en el escalamiento.
   calendarId: string;
+  // Motivo/categoría por el que se le escala (ej. "Consultas técnicas"),
+  // texto libre — el agente elige a quién avisar según el motivo de la
+  // consulta (ver tools.ts#buildEscalateToHumanTool, que arma el enum de
+  // la herramienta a partir de los motivos cargados acá). Vacío = comodín:
+  // esta persona recibe lo que no matchee ningún motivo específico.
+  reason: string;
 }
 
 export interface CommunicationStyleOverride {
@@ -63,10 +56,10 @@ export interface CommunicationStyleOverride {
  * un número de teléfono o un ID de Tokko.
  */
 export interface AppSettings {
-  // Números de WhatsApp (E.164) que reciben los avisos de escalate_to_human
-  // / share_file, cada uno con su motivo. Ver docs/SETUP.md — no puede ser
-  // un grupo, la API de WhatsApp no lo permite.
-  escalationContacts: EscalationContact[];
+  // Todo el equipo en una sola lista — escalamiento (con motivo) y
+  // coordinación de visitas (con calendario) comparten los mismos
+  // contactos, ver docs/SETUP.md.
+  team: TeamMember[];
   // Nombre del archivo en Drive que mapea nombre de propiedad -> link de
   // Zonaprop (ver findZonapropLink en drive/client.ts).
   zonapropLinksFileName: string;
@@ -101,18 +94,18 @@ export interface AppSettings {
   // WhatsApp — ver src/scheduler.ts y src/agent/dailySummary.ts.
   dailySummaryHour: number;
   // Coordinación de visitas/reuniones por Google Calendar (ver
-  // src/calendar/client.ts). Sin comerciales cargados, esas herramientas
-  // no funcionan — el agente lo maneja como "todavía no hay calendario".
+  // src/calendar/client.ts) — usa los miembros de "team" que tengan
+  // calendarId cargado. Sin ninguno, esas herramientas no funcionan — el
+  // agente lo maneja como "todavía no hay calendario".
   visits: {
-    // Un comercial por fila, cada uno con su propio calendario — el
-    // agente chequea disponibilidad cruzando todos y agenda en el
-    // calendario de uno que esté libre en el horario elegido.
-    reps: SalesRep[];
     durationMinutes: number;
     // Horario laboral local (Argentina, 0-23) dentro del cual se ofrecen
-    // y agendan horarios — mismo rango todos los días de la semana.
+    // y agendan horarios.
     businessHourStart: number;
     businessHourEnd: number;
+    // Días de la semana en los que se puede agendar (0 = domingo .. 6 =
+    // sábado, como Date#getDay()).
+    businessDays: number[];
   };
 }
 
@@ -138,9 +131,11 @@ function defaultSettings(): AppSettings {
   ];
 
   return {
-    escalationContacts: (config.HUMAN_ESCALATION_WHATSAPP_NUMBERS ?? []).map((phone) => ({
+    team: (config.HUMAN_ESCALATION_WHATSAPP_NUMBERS ?? []).map((phone) => ({
       name: "",
       phone,
+      email: "",
+      calendarId: "",
       reason: "",
     })),
     zonapropLinksFileName: "Links Zonaprop",
@@ -155,7 +150,7 @@ function defaultSettings(): AppSettings {
     initiateConversationTemplateText:
       "Hola {{1}}! Somos de ismo Propiedades. Nos comentaron que estás buscando {{2}}. ¿En qué te podemos ayudar?",
     dailySummaryHour: 20,
-    visits: { reps: [], durationMinutes: 30, businessHourStart: 10, businessHourEnd: 18 },
+    visits: { durationMinutes: 30, businessHourStart: 10, businessHourEnd: 18, businessDays: [0, 1, 2, 3, 4, 5, 6] },
   };
 }
 
@@ -164,31 +159,49 @@ function defaultSettings(): AppSettings {
 // communicationStyle) no rompe en vez de tirar undefined más adelante.
 function normalize(loaded: Partial<AppSettings>): AppSettings {
   const defaults = defaultSettings();
-  // Migración: settings.json de antes de agregar el motivo por contacto
-  // tenía escalationNumbers como string[] plano.
-  const legacyNumbers = (loaded as unknown as { escalationNumbers?: string[] }).escalationNumbers;
-  const escalationContacts =
-    loaded.escalationContacts ??
-    legacyNumbers?.map((phone) => ({ name: "", phone, reason: "" })) ??
-    defaults.escalationContacts;
 
-  // Migración: settings.json de antes de soportar varios comerciales tenía
-  // visits.calendarId como un único string en vez de una lista de reps.
-  const legacyVisits = loaded.visits as unknown as { calendarId?: string } | undefined;
+  // Migración: settings.json de antes de unificar "Números de contacto" y
+  // "comerciales" en una sola lista de equipo tenía escalationContacts
+  // (name/phone/reason) y visits.reps (name/phone/email/calendarId) por
+  // separado — se concatenan en team. Si la misma persona estaba en las
+  // dos listas, va a quedar duplicada acá (una fila con reason, otra con
+  // calendarId): conviene revisar y unificarla a mano una sola vez en
+  // /admin/config.
+  const legacyEscalation = (
+    loaded as unknown as { escalationContacts?: { name?: string; phone: string; reason?: string }[] }
+  ).escalationContacts;
+  const legacyNumbers = (loaded as unknown as { escalationNumbers?: string[] }).escalationNumbers;
+  const legacyVisits = loaded.visits as unknown as { reps?: TeamMember[]; calendarId?: string } | undefined;
+
+  let team = loaded.team;
+  if (!team) {
+    const fromEscalation: TeamMember[] =
+      legacyEscalation?.map((c) => ({
+        name: c.name ?? "",
+        phone: c.phone,
+        email: "",
+        calendarId: "",
+        reason: c.reason ?? "",
+      })) ??
+      legacyNumbers?.map((phone) => ({ name: "", phone, email: "", calendarId: "", reason: "" })) ??
+      [];
+    const fromReps: TeamMember[] =
+      legacyVisits?.reps?.map((r) => ({ ...r, reason: "" })) ??
+      (legacyVisits?.calendarId
+        ? [{ name: "Equipo", phone: "", email: "", calendarId: legacyVisits.calendarId, reason: "" }]
+        : []);
+    team = fromEscalation.length > 0 || fromReps.length > 0 ? [...fromEscalation, ...fromReps] : defaults.team;
+  }
+
   const visitsLoaded: Partial<AppSettings["visits"]> = loaded.visits ?? {};
-  const reps =
-    visitsLoaded.reps ??
-    (legacyVisits?.calendarId
-      ? [{ name: "Equipo", phone: "", email: "", calendarId: legacyVisits.calendarId }]
-      : defaults.visits.reps);
 
   return {
     ...defaults,
     ...loaded,
-    escalationContacts,
+    team,
     tokko: { ...defaults.tokko, ...loaded.tokko },
     communicationStyle: { ...defaults.communicationStyle, ...loaded.communicationStyle },
-    visits: { ...defaults.visits, ...visitsLoaded, reps },
+    visits: { ...defaults.visits, ...visitsLoaded },
   };
 }
 

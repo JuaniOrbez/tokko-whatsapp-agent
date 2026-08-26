@@ -29,7 +29,7 @@ function normalizePhone(phone: string): string {
 }
 
 export function isHumanEscalationNumber(phone: string): boolean {
-  const contacts = getSettings().escalationContacts;
+  const contacts = getSettings().team;
   const normalized = normalizePhone(phone);
   return contacts.some((c) => normalizePhone(c.phone) === normalized);
 }
@@ -52,7 +52,7 @@ export async function escalateToHumans(input: {
   reason?: string;
   category?: string;
 }): Promise<boolean> {
-  const contacts = getSettings().escalationContacts;
+  const contacts = getSettings().team;
   if (contacts.length === 0) return false;
 
   const matched = input.category ? contacts.filter((c) => c.reason === input.category) : [];

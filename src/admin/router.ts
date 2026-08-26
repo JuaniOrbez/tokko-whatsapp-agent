@@ -5,8 +5,7 @@ import {
   type AppSettings,
   type TokkoStage,
   type CommunicationStyleOverride,
-  type EscalationContact,
-  type SalesRep,
+  type TeamMember,
 } from "../settings.js";
 import { initiateConversation } from "../agent/orchestrator.js";
 import { renderConversationsList, renderConversationDetail, renderDailySummaryView } from "./conversationsView.js";
@@ -114,17 +113,6 @@ function toArray(value: unknown): string[] {
 adminRouter.post("/admin/config", (req: Request, res: Response) => {
   const body = req.body as Record<string, unknown>;
 
-  const escalationNames = toArray(body.escalationName);
-  const escalationPhones = toArray(body.escalationPhone);
-  const escalationReasons = toArray(body.escalationReason);
-  const escalationContacts: EscalationContact[] = escalationPhones
-    .map((phone, i) => ({
-      name: (escalationNames[i] ?? "").trim(),
-      phone: phone.trim(),
-      reason: (escalationReasons[i] ?? "").trim(),
-    }))
-    .filter((c) => c.phone !== "");
-
   const toNumberOrUndefined = (v: string | undefined): number | undefined => {
     if (!v || v.trim() === "") return undefined;
     const n = Number(v);
@@ -148,21 +136,27 @@ adminRouter.post("/admin/config", (req: Request, res: Response) => {
     .map((match, i) => ({ match: match.trim(), style: (overrideStyles[i] ?? "").trim() }))
     .filter((o) => o.match !== "" && o.style !== "");
 
-  const repNames = toArray(body.repName);
-  const repPhones = toArray(body.repPhone);
-  const repEmails = toArray(body.repEmail);
-  const repCalendarIds = toArray(body.repCalendarId);
-  const reps: SalesRep[] = repNames
-    .map((name, i) => ({
-      name: name.trim(),
-      phone: (repPhones[i] ?? "").trim(),
-      email: (repEmails[i] ?? "").trim(),
-      calendarId: (repCalendarIds[i] ?? "").trim(),
+  const teamNames = toArray(body.teamName);
+  const teamPhones = toArray(body.teamPhone);
+  const teamEmails = toArray(body.teamEmail);
+  const teamCalendarIds = toArray(body.teamCalendarId);
+  const teamReasons = toArray(body.teamReason);
+  const team: TeamMember[] = teamPhones
+    .map((phone, i) => ({
+      name: (teamNames[i] ?? "").trim(),
+      phone: phone.trim(),
+      email: (teamEmails[i] ?? "").trim(),
+      calendarId: (teamCalendarIds[i] ?? "").trim(),
+      reason: (teamReasons[i] ?? "").trim(),
     }))
-    .filter((r) => r.name !== "" && r.calendarId !== "");
+    .filter((m) => m.phone !== "");
+
+  const businessDays = toArray(body.visitsBusinessDay)
+    .map((d) => Number(d))
+    .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
 
   const settings: AppSettings = {
-    escalationContacts,
+    team,
     zonapropLinksFileName: String(body.zonapropLinksFileName ?? "").trim() || "Links Zonaprop",
     driveFolderId: String(body.driveFolderId ?? "").trim() || undefined,
     tokko: {
@@ -178,10 +172,10 @@ adminRouter.post("/admin/config", (req: Request, res: Response) => {
     initiateConversationTemplateText: String(body.initiateTemplateText ?? "").trim() || undefined,
     dailySummaryHour: toNumberOrUndefined(body.dailySummaryHour as string | undefined) ?? 20,
     visits: {
-      reps,
       durationMinutes: toNumberOrUndefined(body.visitsDurationMinutes as string | undefined) ?? 30,
       businessHourStart: toNumberOrUndefined(body.visitsBusinessHourStart as string | undefined) ?? 10,
       businessHourEnd: toNumberOrUndefined(body.visitsBusinessHourEnd as string | undefined) ?? 18,
+      businessDays,
     },
   };
 
@@ -232,13 +226,14 @@ function esc(value: string | number | undefined): string {
   });
 }
 
-function renderRepRow(rep: Partial<SalesRep>): string {
+function renderTeamRow(member: Partial<TeamMember>): string {
   return `
-              <div class="rep-row">
-                <input type="text" name="repName" value="${esc(rep.name)}" placeholder="Nombre (+ apellido si hay otro igual)">
-                <input type="text" name="repPhone" value="${esc(rep.phone)}" placeholder="+5491122334455">
-                <input type="text" name="repEmail" value="${esc(rep.email)}" placeholder="mail@ejemplo.com (opcional)">
-                <input type="text" name="repCalendarId" value="${esc(rep.calendarId)}" placeholder="ID de su calendario">
+              <div class="team-row">
+                <input type="text" name="teamName" value="${esc(member.name)}" placeholder="Nombre (+ apellido si hay otro igual)">
+                <input type="text" name="teamPhone" value="${esc(member.phone)}" placeholder="+5491122334455">
+                <input type="text" name="teamEmail" value="${esc(member.email)}" placeholder="mail@ejemplo.com (opcional)">
+                <input type="text" name="teamCalendarId" value="${esc(member.calendarId)}" placeholder="ID de su calendario (opcional)">
+                <input type="text" name="teamReason" value="${esc(member.reason)}" placeholder="Motivo de escalamiento (opcional)">
               </div>`;
 }
 
@@ -249,15 +244,6 @@ function renderStageRow(stage: Partial<TokkoStage>): string {
                 <input type="text" name="stageLabel" value="${esc(stage.label)}" placeholder="Nombre visible">
                 <input type="number" name="stageId" value="${esc(stage.tokkoId)}" placeholder="ID Tokko">
               </div>`;
-}
-
-function renderNumberRow(contact: Partial<EscalationContact>): string {
-  return `
-            <div class="number-row">
-              <input type="text" name="escalationName" value="${esc(contact.name)}" placeholder="Nombre (opcional)">
-              <input type="text" name="escalationPhone" value="${esc(contact.phone)}" placeholder="+5491122334455">
-              <input type="text" name="escalationReason" value="${esc(contact.reason)}" placeholder="Motivo (opcional, ej. Consultas técnicas)">
-            </div>`;
 }
 
 function renderStyleOverrideRow(o: Partial<CommunicationStyleOverride>): string {
@@ -408,17 +394,21 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
     ...Array.from({ length: EXTRA_BLANK_STAGE_ROWS }, () => renderStageRow({})),
   ].join("\n");
 
-  const numberRows = [
-    ...settings.escalationContacts.map(renderNumberRow),
-    renderNumberRow({}),
-  ].join("\n");
-
   const overrideRows = [
     ...settings.communicationStyle.overrides.map(renderStyleOverrideRow),
     ...Array.from({ length: EXTRA_BLANK_STYLE_OVERRIDE_ROWS }, () => renderStyleOverrideRow({})),
   ].join("\n");
 
-  const repRows = [...settings.visits.reps.map(renderRepRow), renderRepRow({})].join("\n");
+  const teamRows = [...settings.team.map(renderTeamRow), renderTeamRow({})].join("\n");
+
+  const DAY_LABELS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  const businessDayCheckboxes = DAY_LABELS.map(
+    (label, day) => `
+            <label class="day-check">
+              <input type="checkbox" name="visitsBusinessDay" value="${day}" ${settings.visits.businessDays.includes(day) ? "checked" : ""}>
+              ${label}
+            </label>`,
+  ).join("\n");
 
   return `<!doctype html>
 <html lang="es">
@@ -510,14 +500,6 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   .hint { font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
   .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 16px; }
   @media (max-width: 480px) { .stages { grid-template-columns: 1fr; } }
-  .number-rows { display: flex; flex-direction: column; gap: 9px; margin-bottom: 4px; }
-  .number-row-header {
-    display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 8px;
-    font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em;
-    color: var(--text-muted); padding: 0 2px; font-weight: 600;
-  }
-  .number-row { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 8px; }
-  @media (max-width: 480px) { .number-row, .number-row-header { grid-template-columns: 1fr; } }
   .override-rows { display: flex; flex-direction: column; gap: 9px; margin-bottom: 4px; }
   .override-row { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
   @media (max-width: 480px) { .override-row { grid-template-columns: 1fr; } }
@@ -529,14 +511,16 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   }
   .stage-row { display: grid; grid-template-columns: 1fr 1.4fr 90px; gap: 8px; }
   @media (max-width: 480px) { .stage-row, .stage-row-header { grid-template-columns: 1fr; } }
-  .rep-rows { display: flex; flex-direction: column; gap: 9px; }
-  .rep-row-header {
-    display: grid; grid-template-columns: 1.1fr 1fr 1.2fr 1.4fr; gap: 8px;
+  .team-rows { display: flex; flex-direction: column; gap: 9px; }
+  .team-row-header {
+    display: grid; grid-template-columns: 1.1fr 0.9fr 1.1fr 1.1fr 1.1fr; gap: 8px;
     font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em;
     color: var(--text-muted); padding: 0 2px; font-weight: 600;
   }
-  .rep-row { display: grid; grid-template-columns: 1.1fr 1fr 1.2fr 1.4fr; gap: 8px; }
-  @media (max-width: 480px) { .rep-row, .rep-row-header { grid-template-columns: 1fr; } }
+  .team-row { display: grid; grid-template-columns: 1.1fr 0.9fr 1.1fr 1.1fr 1.1fr; gap: 8px; }
+  @media (max-width: 700px) { .team-row, .team-row-header { grid-template-columns: 1fr; } }
+  .day-checks { display: flex; flex-wrap: wrap; gap: 12px; }
+  .day-check { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; cursor: pointer; }
   .actions { position: sticky; bottom: 16px; padding-top: 4px; }
   button {
     padding: 13px 22px; font-size: 0.95rem; font-weight: 600;
@@ -568,16 +552,23 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
     <form method="POST" action="/admin/config">
 
       <details class="section" open>
-        <summary><span class="icon">👥</span> Números de contacto<span class="chevron">›</span></summary>
+        <summary><span class="icon">👥</span> Equipo<span class="chevron">›</span></summary>
         <div class="section-body">
           <div class="field">
-            <label>Números de WhatsApp que reciben los escalamientos</label>
-            <div class="number-rows" id="numberRows">
-              <div class="number-row-header"><span>Nombre</span><span>Número</span><span>Motivo</span></div>
-              ${numberRows}
+            <label>Todo el equipo — escalamiento y coordinación de visitas comparten esta misma lista</label>
+            <div class="team-rows" id="teamRows">
+              <div class="team-row-header"><span>Nombre</span><span>Teléfono</span><span>Mail</span><span>Calendario</span><span>Motivo</span></div>
+              ${teamRows}
             </div>
-            <button type="button" class="add-row-btn" id="addNumberRowBtn">+ Agregar número</button>
-            <div class="hint">El nombre es solo para identificar de quién es cada número, es opcional. El motivo le sirve al agente para elegir a quién avisar según el tipo de consulta (ej. "Consultas técnicas" vs "Consultas generales") — si lo dejás vacío, ese número recibe lo que no matchee ningún motivo específico. No puede ser un grupo de WhatsApp (la API no lo permite) — cada fila es un número individual. Mientras estés en el sandbox de Twilio, cada uno tiene que sumarse mandándole "join &lt;palabra-clave&gt;" al número del sandbox.</div>
+            <button type="button" class="add-row-btn" id="addTeamRowBtn">+ Agregar persona</button>
+            <div class="hint">
+              <b>Nombre:</b> si hay dos personas con el mismo nombre de pila, agregá el apellido para diferenciarlas (ej. "Martín Pérez" / "Martín Gómez") — si un cliente pide un nombre que coincide con más de una, el agente le pide que aclare en vez de elegir por su cuenta.
+              <b>Teléfono:</b> obligatorio, formato E.164 (ej. +5491122334455) — no puede ser un grupo de WhatsApp, la API no lo permite. Mientras estés en el sandbox de Twilio, cada uno tiene que sumarse mandándole "join &lt;palabra-clave&gt;" al número del sandbox.
+              <b>Mail:</b> opcional, solo referencia interna.
+              <b>Calendario:</b> opcional — el ID del calendario personal de esta persona (compartido con la cuenta de servicio, ver docs/SETUP.md). Si lo cargás, participa de la coordinación de visitas y recibe un WhatsApp cuando se le agenda una; si lo dejás vacío, esta persona no coordina visitas.
+              <b>Motivo:</b> opcional — para qué tipo de consulta se le escala (ej. "Consultas técnicas"). Vacío = recibe lo que no matchee ningún motivo específico.
+              Para sacar a alguien, borrale el teléfono.
+            </div>
           </div>
         </div>
       </details>
@@ -662,7 +653,7 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
           <div class="field">
             <label for="dailySummaryHour">Hora local (Argentina) en la que se manda</label>
             <input type="number" id="dailySummaryHour" name="dailySummaryHour" min="0" max="23" value="${esc(settings.dailySummaryHour)}">
-            <div class="hint">Se manda por WhatsApp a los números de la sección "Números de contacto", con lo que pasó ese día. Si no hubo actividad, no manda nada.</div>
+            <div class="hint">Se manda por WhatsApp a todo el equipo cargado en la sección "Equipo", con lo que pasó ese día. Si no hubo actividad, no manda nada.</div>
           </div>
         </div>
       </details>
@@ -671,25 +662,22 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
         <summary><span class="icon">📅</span> Visitas / Reuniones<span class="chevron">›</span></summary>
         <div class="section-body">
           <div class="field">
-            <label>Comerciales (cada uno con su propio calendario)</label>
-            <div class="rep-rows" id="repRows">
-              <div class="rep-row-header"><span>Nombre</span><span>Teléfono</span><span>Mail (opcional)</span><span>ID de su calendario</span></div>
-              ${repRows}
-            </div>
-            <button type="button" class="add-row-btn" id="addRepRowBtn">+ Agregar comercial</button>
-            <div class="hint">Cada comercial comparte su propio calendario con la cuenta de servicio (mismo permiso de "Hacer cambios en los eventos" que le diste a la carpeta de Drive) — ver docs/SETUP.md. Al coordinar una visita, el agente cruza la disponibilidad de todos y agenda en el calendario de uno que esté libre, y le avisa por WhatsApp al número cargado acá (si lo dejás vacío, se agenda igual pero no se le notifica a nadie). Si hay dos comerciales con el mismo nombre de pila, agregá el apellido para poder diferenciarlos (ej. "Martín Pérez" / "Martín Gómez") — si el cliente pide un nombre que coincide con más de uno, el agente le va a pedir que aclare en vez de elegir por su cuenta. Sin ningún comercial cargado, el agente no puede coordinar visitas. Para sacar uno, borrale el nombre.</div>
-          </div>
-          <div class="field">
             <label for="visitsDurationMinutes">Duración de cada visita (minutos)</label>
             <input type="number" id="visitsDurationMinutes" name="visitsDurationMinutes" min="5" value="${esc(settings.visits.durationMinutes)}">
           </div>
           <div class="field">
-            <label>Horario laboral (hora Argentina, todos los días)</label>
+            <label>Horario laboral (hora Argentina)</label>
             <div class="stage-row" style="grid-template-columns: 1fr 1fr;">
               <input type="number" name="visitsBusinessHourStart" min="0" max="23" value="${esc(settings.visits.businessHourStart)}" placeholder="Desde (0-23)">
               <input type="number" name="visitsBusinessHourEnd" min="0" max="23" value="${esc(settings.visits.businessHourEnd)}" placeholder="Hasta (0-23)">
             </div>
-            <div class="hint">El agente solo ofrece y agenda horarios dentro de este rango.</div>
+          </div>
+          <div class="field">
+            <label>Días de la semana en los que se puede agendar</label>
+            <div class="day-checks">
+              ${businessDayCheckboxes}
+            </div>
+            <div class="hint">El agente solo ofrece y agenda horarios dentro de este horario y estos días. Quién participa de las visitas (y con qué calendario) se carga en la sección "Equipo", de más arriba.</div>
           </div>
         </div>
       </details>
@@ -709,25 +697,19 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
       <input type="number" name="stageId" placeholder="ID Tokko">
     </div>
   </template>
-  <template id="numberRowTemplate">
-    <div class="number-row">
-      <input type="text" name="escalationName" placeholder="Nombre (opcional)">
-      <input type="text" name="escalationPhone" placeholder="+5491122334455">
-      <input type="text" name="escalationReason" placeholder="Motivo (opcional, ej. Consultas técnicas)">
-    </div>
-  </template>
   <template id="overrideRowTemplate">
     <div class="override-row">
       <input type="text" name="styleOverrideMatch" placeholder="Nombre de propiedad/emprendimiento">
       <input type="text" name="styleOverrideStyle" placeholder="Instrucciones de tono">
     </div>
   </template>
-  <template id="repRowTemplate">
-    <div class="rep-row">
-      <input type="text" name="repName" placeholder="Nombre (+ apellido si hay otro igual)">
-      <input type="text" name="repPhone" placeholder="+5491122334455">
-      <input type="text" name="repEmail" placeholder="mail@ejemplo.com (opcional)">
-      <input type="text" name="repCalendarId" placeholder="ID de su calendario">
+  <template id="teamRowTemplate">
+    <div class="team-row">
+      <input type="text" name="teamName" placeholder="Nombre (+ apellido si hay otro igual)">
+      <input type="text" name="teamPhone" placeholder="+5491122334455">
+      <input type="text" name="teamEmail" placeholder="mail@ejemplo.com (opcional)">
+      <input type="text" name="teamCalendarId" placeholder="ID de su calendario (opcional)">
+      <input type="text" name="teamReason" placeholder="Motivo de escalamiento (opcional)">
     </div>
   </template>
   <script>
@@ -736,20 +718,15 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
       var row = tpl.content.cloneNode(true);
       document.getElementById('stageRows').appendChild(row);
     });
-    document.getElementById('addNumberRowBtn').addEventListener('click', function () {
-      var tpl = document.getElementById('numberRowTemplate');
-      var row = tpl.content.cloneNode(true);
-      document.getElementById('numberRows').appendChild(row);
-    });
     document.getElementById('addOverrideRowBtn').addEventListener('click', function () {
       var tpl = document.getElementById('overrideRowTemplate');
       var row = tpl.content.cloneNode(true);
       document.getElementById('overrideRows').appendChild(row);
     });
-    document.getElementById('addRepRowBtn').addEventListener('click', function () {
-      var tpl = document.getElementById('repRowTemplate');
+    document.getElementById('addTeamRowBtn').addEventListener('click', function () {
+      var tpl = document.getElementById('teamRowTemplate');
       var row = tpl.content.cloneNode(true);
-      document.getElementById('repRows').appendChild(row);
+      document.getElementById('teamRows').appendChild(row);
     });
   </script>
 </body>

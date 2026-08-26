@@ -1,15 +1,16 @@
 import { google } from "googleapis";
 import { config } from "../config.js";
 import { getSettings } from "../settings.js";
-import type { SalesRep } from "../settings.js";
+import type { TeamMember } from "../settings.js";
 
 /**
  * Coordinación de visitas/reuniones contra Google Calendar, con la misma
- * cuenta de servicio que ya usa Drive (ver docs/SETUP.md) — cada comercial
- * comparte su propio calendario con esa cuenta ("Hacer cambios en los
- * eventos") y se carga en /admin. El agente cruza la disponibilidad de
- * todos (o de uno puntual, si el cliente lo pidió por nombre) y agenda en
- * el calendario de uno que esté libre.
+ * cuenta de servicio que ya usa Drive (ver docs/SETUP.md) — cada miembro
+ * del equipo que participa de visitas comparte su propio calendario con
+ * esa cuenta ("Hacer cambios en los eventos") y se carga en /admin. El
+ * agente cruza la disponibilidad de todos (o de uno puntual, si el
+ * cliente lo pidió por nombre) y agenda en el calendario de uno que esté
+ * libre.
  */
 const auth = new google.auth.GoogleAuth({
   keyFile: config.GOOGLE_SERVICE_ACCOUNT_FILE,
@@ -32,6 +33,18 @@ function formatArgentinaTime(d: Date): string {
   return `${String(local.getUTCHours()).padStart(2, "0")}:${String(local.getUTCMinutes()).padStart(2, "0")}`;
 }
 
+// Día de la semana de una fecha calendario (0 = domingo .. 6 = sábado) —
+// no depende de huso horario, es una propiedad de la fecha en sí.
+function weekdayOf(dateStr: string): number {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/** Miembros del equipo que tienen calendario cargado — los únicos que participan de la coordinación de visitas. */
+function visitReps(): TeamMember[] {
+  return getSettings().team.filter((m) => m.calendarId);
+}
+
 function normalizeName(s: string): string {
   return s
     .normalize("NFD")
@@ -40,17 +53,17 @@ function normalizeName(s: string): string {
     .trim();
 }
 
-/** Todos los comerciales que matchean `name` (sin importar acentos/mayúsculas, alcanza con que uno contenga al otro) — puede haber más de uno si hay nombres repetidos, ver docs/SETUP.md. */
-export function findMatchingReps(name: string): SalesRep[] {
+/** Todos los del equipo (con calendario) que matchean `name` (sin importar acentos/mayúsculas, alcanza con que uno contenga al otro) — puede haber más de uno si hay nombres repetidos, ver docs/SETUP.md. */
+export function findMatchingReps(name: string): TeamMember[] {
   const target = normalizeName(name);
-  return getSettings().visits.reps.filter((r) => {
+  return visitReps().filter((r) => {
     const repName = normalizeName(r.name);
     return repName.includes(target) || target.includes(repName);
   });
 }
 
-/** Único comercial que matchea `name` — undefined si no hay ninguno, o si hay más de uno (ambiguo). */
-export function findRepByName(name: string): SalesRep | undefined {
+/** Único match para `name` — undefined si no hay ninguno, o si hay más de uno (ambiguo). */
+export function findRepByName(name: string): TeamMember | undefined {
   const matches = findMatchingReps(name);
   return matches.length === 1 ? matches[0] : undefined;
 }
@@ -76,17 +89,19 @@ async function getBusyRanges(calendarId: string, from: Date, to: Date): Promise<
 
 /**
  * Franjas libres para `dateStr` (YYYY-MM-DD, hora Argentina), recortadas al
- * horario laboral configurado en /admin y de a `durationMinutes`. Sin
- * `repName`, un horario cuenta como libre si AL MENOS UN comercial no
- * tiene nada ese rato (la asignación puntual se resuelve recién al
- * agendar, ver bookVisit); con `repName`, solo mira el calendario de ese
- * comercial. Devuelve [] si no hay comerciales cargados (o no se
- * encuentra el nombre pedido), o si la fecha no tiene horario laboral
- * válido (fin <= inicio).
+ * horario y los días laborales configurados en /admin, y de a
+ * `durationMinutes`. Sin `repName`, un horario cuenta como libre si AL
+ * MENOS UNA persona no tiene nada ese rato (la asignación puntual se
+ * resuelve recién al agendar, ver bookVisit); con `repName`, solo mira su
+ * calendario. Devuelve [] si no hay nadie con calendario cargado (o no se
+ * encuentra el nombre pedido), si ese día de la semana no es laboral, o si
+ * el horario configurado no es válido (fin <= inicio).
  */
 export async function getAvailableSlots(dateStr: string, repName?: string): Promise<string[]> {
   const settings = getSettings().visits;
-  const reps = repName ? [findRepByName(repName)].filter((r): r is SalesRep => Boolean(r)) : settings.reps;
+  if (!settings.businessDays.includes(weekdayOf(dateStr))) return [];
+
+  const reps = repName ? [findRepByName(repName)].filter((r): r is TeamMember => Boolean(r)) : visitReps();
   if (reps.length === 0) return [];
 
   const dayStart = argentinaLocalToUtc(dateStr, settings.businessHourStart, 0);
@@ -108,8 +123,8 @@ export async function getAvailableSlots(dateStr: string, repName?: string): Prom
   return slots;
 }
 
-/** Primer comercial de `reps` (en ese orden) libre en ese horario puntual, o null si ninguno lo está. */
-async function findFreeRepAmong(reps: SalesRep[], start: Date, end: Date): Promise<SalesRep | null> {
+/** Primer miembro de `reps` (en ese orden) libre en ese horario puntual, o null si ninguno lo está. */
+async function findFreeRepAmong(reps: TeamMember[], start: Date, end: Date): Promise<TeamMember | null> {
   for (const rep of reps) {
     const busy = await getBusyRanges(rep.calendarId, start, end);
     const overlaps = busy.some((b) => start < b.end && end > b.start);
@@ -126,9 +141,9 @@ export interface BookVisitInput {
   // Si se carga, se invita a esta dirección al evento (Calendar le manda
   // la invitación directo) — opcional, el cliente puede no querer darlo.
   clientEmail?: string;
-  // Si el cliente pidió un comercial puntual por nombre — si no está
-  // libre (o no se encuentra), bookVisit tira en vez de asignarle a otro
-  // sin avisar.
+  // Si el cliente pidió a alguien puntual por nombre — si no está libre
+  // (o no se encuentra), bookVisit tira en vez de asignarle a otro sin
+  // avisar.
   repName?: string;
 }
 
@@ -136,22 +151,27 @@ export interface BookVisitResult {
   eventId: string;
   htmlLink?: string;
   repName: string;
-  // Vacío si ese comercial no cargó teléfono — el llamador decide si
-  // avisa por WhatsApp o no.
+  // Vacío si esa persona no cargó teléfono — el llamador decide si avisa
+  // por WhatsApp o no.
   repPhone: string;
 }
 
 /**
- * Agenda el evento en el calendario de un comercial libre en ese horario.
- * Tira si no hay comerciales configurados, si `repName` no matchea a
- * nadie, si ninguno (o el pedido puntualmente) está libre, o si Calendar
- * devuelve un error (fecha/hora inválida, etc.) — el llamador decide qué
- * responderle al cliente.
+ * Agenda el evento en el calendario de alguien del equipo libre en ese
+ * horario. Tira si no hay nadie con calendario configurado, si ese día de
+ * la semana no es laboral, si `repName` no matchea a nadie (o matchea a
+ * más de uno), si nadie (o la persona pedida puntualmente) está libre, o
+ * si Calendar devuelve un error (fecha/hora inválida, etc.) — el llamador
+ * decide qué responderle al cliente.
  */
 export async function bookVisit(input: BookVisitInput): Promise<BookVisitResult> {
   const settings = getSettings().visits;
-  if (settings.reps.length === 0) {
-    throw new Error("No hay ningún comercial con calendario configurado (ver /admin).");
+  const allReps = visitReps();
+  if (allReps.length === 0) {
+    throw new Error("No hay nadie del equipo con calendario configurado (ver /admin).");
+  }
+  if (!settings.businessDays.includes(weekdayOf(input.dateStr))) {
+    throw new Error(`${input.dateStr} no es un día laboral configurado para coordinar visitas.`);
   }
   const [hourStr, minuteStr] = input.time.split(":");
   const hour = Number(hourStr);
@@ -162,15 +182,15 @@ export async function bookVisit(input: BookVisitInput): Promise<BookVisitResult>
   const start = argentinaLocalToUtc(input.dateStr, hour, minute);
   const end = new Date(start.getTime() + settings.durationMinutes * 60 * 1000);
 
-  let candidateReps = settings.reps;
+  let candidateReps = allReps;
   if (input.repName) {
     const matches = findMatchingReps(input.repName);
     if (matches.length === 0) {
-      throw new Error(`No encontré a "${input.repName}" entre los comerciales cargados.`);
+      throw new Error(`No encontré a "${input.repName}" entre el equipo cargado.`);
     }
     if (matches.length > 1) {
       throw new Error(
-        `Hay más de un comercial que coincide con "${input.repName}" (${matches.map((r) => r.name).join(", ")}) — pedile al cliente que aclare cuál, con el apellido si hace falta.`,
+        `Hay más de una persona que coincide con "${input.repName}" (${matches.map((r) => r.name).join(", ")}) — pedile al cliente que aclare cuál, con el apellido si hace falta.`,
       );
     }
     candidateReps = matches;
@@ -179,9 +199,7 @@ export async function bookVisit(input: BookVisitInput): Promise<BookVisitResult>
   const rep = await findFreeRepAmong(candidateReps, start, end);
   if (!rep) {
     throw new Error(
-      input.repName
-        ? `${input.repName} ya no está libre en ese horario.`
-        : "Ya no queda ningún comercial libre en ese horario.",
+      input.repName ? `${input.repName} ya no está libre en ese horario.` : "Ya no queda nadie libre en ese horario.",
     );
   }
 
