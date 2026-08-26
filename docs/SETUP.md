@@ -311,6 +311,12 @@ hace falta ningún servicio externo: se arma con `data/conversations.jsonl`
 `node-cron` ni nada por el estilo, un `setTimeout` que se reprograma solo
 cada vez que dispara).
 
+Además del envío automático de fin del día, el botón "Resumen de hoy" del
+panel (`/admin/daily-summary`) arma el mismo resumen al toque, con la
+actividad registrada hasta ese momento — sin esperar a la hora
+configurada ni mandar nada por WhatsApp, solo para verlo en el navegador
+cuando se quiera.
+
 ### Ver conversaciones (`/admin/conversations`)
 
 Desde el botón "Ver conversaciones" del panel se accede a la lista de

@@ -33,23 +33,20 @@ rioplatense, directo, corto, apto para WhatsApp (sin markdown de títulos).
 No inventes nada que no esté en el registro — si algo quedó sin resolver,
 decilo tal cual.`;
 
-/**
- * Arma y manda el resumen del día a los números de escalamiento. No hace
- * nada si no hubo actividad hoy, o si no hay ningún número configurado.
- * Se dispara desde src/scheduler.ts según la hora configurada en /admin.
- */
-export async function generateAndSendDailySummary(): Promise<void> {
-  const entries = getEntriesSince(startOfTodayArgentina());
-  if (entries.length === 0) {
-    logger.info("daily_summary.no_activity");
-    return;
-  }
+export interface DailySummaryResult {
+  text: string;
+  entryCount: number;
+}
 
-  const numbers = getSettings().escalationNumbers;
-  if (numbers.length === 0) {
-    logger.warn("daily_summary.no_recipients");
-    return;
-  }
+/**
+ * Arma el resumen del día (desde medianoche hora Argentina hasta ahora) a
+ * partir del registro de conversaciones. Devuelve null si todavía no hubo
+ * actividad — se usa tanto para el envío automático por WhatsApp
+ * (generateAndSendDailySummary) como para verlo on-demand en /admin.
+ */
+export async function buildDailySummary(): Promise<DailySummaryResult | null> {
+  const entries = getEntriesSince(startOfTodayArgentina());
+  if (entries.length === 0) return null;
 
   const transcript = entries
     .map((e) => `[${e.phone} - ${e.name}] ${e.role === "user" ? "Cliente" : "Agente"}: ${e.text}`)
@@ -68,12 +65,29 @@ export async function generateAndSendDailySummary(): Promise<void> {
     .join("\n")
     .trim();
 
-  if (!summary) {
-    logger.warn("daily_summary.empty_response");
+  if (!summary) return null;
+  return { text: summary, entryCount: entries.length };
+}
+
+/**
+ * Arma y manda el resumen del día a los números de escalamiento. No hace
+ * nada si no hubo actividad hoy, o si no hay ningún número configurado.
+ * Se dispara desde src/scheduler.ts según la hora configurada en /admin.
+ */
+export async function generateAndSendDailySummary(): Promise<void> {
+  const result = await buildDailySummary();
+  if (!result) {
+    logger.info("daily_summary.no_activity");
     return;
   }
 
-  const message = `📋 Resumen del día (${entries.length} mensajes)\n\n${summary}`;
+  const numbers = getSettings().escalationNumbers;
+  if (numbers.length === 0) {
+    logger.warn("daily_summary.no_recipients");
+    return;
+  }
+
+  const message = `📋 Resumen del día (${result.entryCount} mensajes)\n\n${result.text}`;
   await Promise.all(numbers.map((n) => sendText(n, message)));
-  logger.info("daily_summary.sent", { recipients: numbers.length, entryCount: entries.length });
+  logger.info("daily_summary.sent", { recipients: numbers.length, entryCount: result.entryCount });
 }

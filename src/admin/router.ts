@@ -8,7 +8,7 @@ import {
   type CommunicationStyleOverride,
 } from "../settings.js";
 import { initiateConversation } from "../agent/orchestrator.js";
-import { renderConversationsList, renderConversationDetail } from "./conversationsView.js";
+import { renderConversationsList, renderConversationDetail, renderDailySummaryView } from "./conversationsView.js";
 import { logger } from "../logger.js";
 
 export const adminRouter = Router();
@@ -57,6 +57,15 @@ adminRouter.get("/admin/conversations/:phone", (req: Request, res: Response) => 
     .catch((error) => {
       logger.error("admin.conversation_detail_failed", { error: String(error) });
       res.status(500).send("Error armando la conversación.");
+    });
+});
+
+adminRouter.get("/admin/daily-summary", (_req: Request, res: Response) => {
+  renderDailySummaryView()
+    .then((html) => res.type("html").send(html))
+    .catch((error) => {
+      logger.error("admin.daily_summary_view_route_failed", { error: String(error) });
+      res.status(500).send("Error armando el resumen.");
     });
 });
 
@@ -337,6 +346,7 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
       <p>Panel de configuración</p>
     </div>
     <a href="/admin/conversations" style="color:white;text-decoration:none;font-size:0.85rem;opacity:0.9;border:1px solid rgba(255,255,255,0.4);padding:8px 14px;border-radius:8px;">Ver conversaciones</a>
+    <a href="/admin/daily-summary" style="color:white;text-decoration:none;font-size:0.85rem;opacity:0.9;border:1px solid rgba(255,255,255,0.4);padding:8px 14px;border-radius:8px;margin-left:8px;">Resumen de hoy</a>
   </header>
   <main>
     ${saved ? '<div class="banner">✓ Guardado correctamente.</div>' : ""}

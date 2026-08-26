@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getEntriesForPhone, listRecentConversations } from "../agent/conversationLog.js";
+import { buildDailySummary } from "../agent/dailySummary.js";
 import { logger } from "../logger.js";
 
 const anthropic = new Anthropic();
@@ -134,4 +135,27 @@ export async function renderConversationDetail(phone: string): Promise<string> {
     <div class="msg-log">${messagesHtml}</div>
   `;
   return pageShell(`${entries[0].name} · ${phone}`, body);
+}
+
+export async function renderDailySummaryView(): Promise<string> {
+  let result;
+  try {
+    result = await buildDailySummary();
+  } catch (error) {
+    logger.error("admin.daily_summary_view_failed", { error: String(error) });
+    return pageShell("Resumen de hoy", '<div class="empty">No se pudo generar el resumen. Probá de nuevo en un momento.</div>');
+  }
+
+  if (!result) {
+    return pageShell("Resumen de hoy", '<div class="empty">Todavía no hubo actividad hoy.</div>');
+  }
+
+  const summaryHtml = esc(result.text).replace(/\n/g, "<br>");
+  const body = `
+    <div class="card">
+      <div class="meta" style="margin-bottom: 10px;">${result.entryCount} mensajes registrados hoy</div>
+      <div>${summaryHtml}</div>
+    </div>
+  `;
+  return pageShell("Resumen de hoy", body);
 }
