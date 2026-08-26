@@ -23,6 +23,17 @@ export interface EscalationContact {
   reason: string;
 }
 
+export interface SalesRep {
+  name: string;
+  // Opcional — si se carga, se usa como referencia interna (no se le manda
+  // nada automáticamente a este mail, solo al del cliente).
+  email: string;
+  // Calendario personal de este comercial, compartido con la cuenta de
+  // servicio ("Hacer cambios en los eventos") — ver docs/SETUP.md. El
+  // agente chequea disponibilidad y agenda ahí, no en un calendario único.
+  calendarId: string;
+}
+
 export interface CommunicationStyleOverride {
   // Nombre (o parte del nombre) de una propiedad/emprendimiento — el
   // agente decide él mismo si la conversación actual coincide, no hay
@@ -78,10 +89,13 @@ export interface AppSettings {
   // WhatsApp — ver src/scheduler.ts y src/agent/dailySummary.ts.
   dailySummaryHour: number;
   // Coordinación de visitas/reuniones por Google Calendar (ver
-  // src/calendar/client.ts). Sin calendarId, esas herramientas no
-  // funcionan — el agente lo maneja como "todavía no hay calendario".
+  // src/calendar/client.ts). Sin comerciales cargados, esas herramientas
+  // no funcionan — el agente lo maneja como "todavía no hay calendario".
   visits: {
-    calendarId?: string;
+    // Un comercial por fila, cada uno con su propio calendario — el
+    // agente chequea disponibilidad cruzando todos y agenda en el
+    // calendario de uno que esté libre en el horario elegido.
+    reps: SalesRep[];
     durationMinutes: number;
     // Horario laboral local (Argentina, 0-23) dentro del cual se ofrecen
     // y agendan horarios — mismo rango todos los días de la semana.
@@ -125,7 +139,7 @@ function defaultSettings(): AppSettings {
     initiateConversationTemplateText:
       "Hola {{1}}! Somos de ismo Propiedades. Nos comentaron que estás buscando {{2}}. ¿En qué te podemos ayudar?",
     dailySummaryHour: 20,
-    visits: { calendarId: undefined, durationMinutes: 30, businessHourStart: 10, businessHourEnd: 18 },
+    visits: { reps: [], durationMinutes: 30, businessHourStart: 10, businessHourEnd: 18 },
   };
 }
 
@@ -139,13 +153,24 @@ function normalize(loaded: Partial<AppSettings>): AppSettings {
   const legacyNumbers = (loaded as unknown as { escalationNumbers?: string[] }).escalationNumbers;
   const escalationContacts =
     loaded.escalationContacts ?? legacyNumbers?.map((phone) => ({ phone, reason: "" })) ?? defaults.escalationContacts;
+
+  // Migración: settings.json de antes de soportar varios comerciales tenía
+  // visits.calendarId como un único string en vez de una lista de reps.
+  const legacyVisits = loaded.visits as unknown as { calendarId?: string } | undefined;
+  const visitsLoaded: Partial<AppSettings["visits"]> = loaded.visits ?? {};
+  const reps =
+    visitsLoaded.reps ??
+    (legacyVisits?.calendarId
+      ? [{ name: "Equipo", email: "", calendarId: legacyVisits.calendarId }]
+      : defaults.visits.reps);
+
   return {
     ...defaults,
     ...loaded,
     escalationContacts,
     tokko: { ...defaults.tokko, ...loaded.tokko },
     communicationStyle: { ...defaults.communicationStyle, ...loaded.communicationStyle },
-    visits: { ...defaults.visits, ...loaded.visits },
+    visits: { ...defaults.visits, ...visitsLoaded, reps },
   };
 }
 

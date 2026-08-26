@@ -249,35 +249,48 @@ horas si nadie contesta.
 ## 5. Google Calendar (coordinar visitas y reuniones)
 
 El agente puede consultar horarios libres y agendar una visita/reunión
-directamente en un calendario de Google, con la **misma cuenta de
+directamente en el calendario de un comercial, con la **misma cuenta de
 servicio** que ya creaste para Drive (no hace falta crear una nueva ni
-generar otra clave JSON).
+generar otra clave JSON). Cada comercial tiene su propio calendario — el
+agente cruza la disponibilidad de todos antes de ofrecer un horario, y
+agenda en el de uno que esté libre justo en ese momento.
 
 1. En [Google Cloud Console](https://console.cloud.google.com), en el
    mismo proyecto que usaste para Drive, habilitá también la **Google
-   Calendar API** (Library → buscar "Google Calendar API" → Enable).
-2. En [Google Calendar](https://calendar.google.com), creá un calendario
-   nuevo para esto (recomendado, así no se mezcla con tu calendario
-   personal) — engranaje ⚙️ → "Crear un calendario nuevo", ponele un
-   nombre tipo "Visitas ismo Propiedades".
-3. Entrá a la configuración de ese calendario → "Compartir con
-   determinadas personas" → agregá el email de la cuenta de servicio
-   (el mismo que compartiste en Drive, algo como
-   `nombre@proyecto.iam.gserviceaccount.com` — lo encontrás en el campo
-   `client_email` del JSON que descargaste) con permiso **"Hacer cambios
-   en los eventos"**.
-4. En esa misma pantalla de configuración, bajá hasta "Integrar
-   calendario" y copiá el **ID de calendario** (termina en
-   `@group.calendar.google.com`).
-5. Pegá ese ID en `/admin/config`, sección "Visitas / Reuniones" → "ID del
-   calendario de Google Calendar". Ahí mismo se configura la duración de
-   cada visita y el horario laboral (hora Argentina) dentro del cual el
-   agente ofrece y agenda horarios.
+   Calendar API** (Library → buscar "Google Calendar API" → Enable). A
+   veces el primer intento tira un error genérico — probá de nuevo, y si
+   persiste fijate que el proyecto tenga una cuenta de facturación
+   vinculada (activar la prueba gratuita alcanza, no tiene costo).
+2. **Por cada comercial** que quieras que reciba visitas coordinadas por
+   el agente, en [Google Calendar](https://calendar.google.com) con la
+   cuenta de esa persona:
+   1. Creá un calendario nuevo (recomendado, así no se mezcla con el
+      personal) — engranaje ⚙️ → "Crear un calendario nuevo", con su
+      nombre, ej. "Visitas — Juan".
+   2. Entrá a la configuración de ese calendario → "Compartir con
+      determinadas personas" → agregá el email de la cuenta de servicio
+      (el mismo que compartiste en Drive, algo como
+      `nombre@proyecto.iam.gserviceaccount.com` — lo encontrás en el
+      campo `client_email` del JSON que descargaste) con permiso **"Hacer
+      cambios en los eventos"**.
+   3. En esa misma pantalla, bajá hasta "Integrar calendario" y copiá el
+      **ID de calendario** (termina en `@group.calendar.google.com`).
+3. En `/admin/config`, sección "Visitas / Reuniones", cargá una fila por
+   comercial (nombre, mail opcional, el ID de calendario de ese paso). Ahí
+   mismo se configura la duración de cada visita y el horario laboral
+   (hora Argentina) dentro del cual el agente ofrece y agenda horarios.
 
-Sin el ID de calendario cargado, `check_visit_availability`/`book_visit`
+Sin ningún comercial cargado, `check_visit_availability`/`book_visit`
 simplemente le dicen al agente que no hay calendario configurado — sigue
 funcionando todo lo demás con normalidad, y el agente escala a un humano
 en vez de insistir con coordinar la visita él mismo.
+
+### Invitar al cliente por mail
+
+Antes de agendar, el agente le pide el mail al cliente (si no lo quiere
+dar, agenda igual sin ese dato). Si lo tiene, lo carga como invitado del
+evento — Google Calendar le manda la invitación automáticamente apenas se
+crea, sin que haya que hacer nada más de este lado.
 
 ## 6. Claude (Anthropic)
 

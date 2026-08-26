@@ -158,9 +158,11 @@ const STATIC_TOOLS_BEFORE_STAGE: Anthropic.Tool[] = [
   {
     name: "book_visit",
     description:
-      "Agenda una visita o reunión con el cliente actual en el calendario, en un horario que ya " +
-      "confirmaste como libre con check_visit_availability. No la uses sin haber confirmado antes " +
-      "la disponibilidad, ni sin que el cliente haya confirmado el horario.",
+      "Agenda una visita o reunión con el cliente actual en el calendario de un comercial libre en " +
+      "ese horario, en un horario que ya confirmaste como libre con check_visit_availability. No la " +
+      "uses sin haber confirmado antes la disponibilidad, ni sin que el cliente haya confirmado el " +
+      "horario. Antes de llamarla pedile el mail al cliente para poder invitarlo al evento — si no " +
+      "te lo quiere dar, agendá igual sin ese dato, no es bloqueante.",
     input_schema: {
       type: "object",
       properties: {
@@ -169,6 +171,10 @@ const STATIC_TOOLS_BEFORE_STAGE: Anthropic.Tool[] = [
         notes: {
           type: "string",
           description: "Detalle de la visita: propiedad/emprendimiento, dirección, motivo del encuentro.",
+        },
+        client_email: {
+          type: "string",
+          description: "Mail del cliente, para invitarlo al evento — opcional, si no lo dio no lo inventes.",
         },
       },
       required: ["date", "time"],
@@ -405,11 +411,11 @@ export async function executeTool(
 
     case "check_visit_availability": {
       const date = input.date as string;
-      if (!getSettings().visits.calendarId) {
+      if (getSettings().visits.reps.length === 0) {
         return JSON.stringify({
           date,
           hasCalendar: false,
-          reason: "No hay calendario de visitas configurado todavía (ver /admin).",
+          reason: "No hay ningún comercial con calendario configurado todavía (ver /admin).",
         });
       }
       try {
@@ -425,15 +431,24 @@ export async function executeTool(
       const date = input.date as string;
       const time = input.time as string;
       const notes = (input.notes as string | undefined)?.trim();
+      const clientEmail = (input.client_email as string | undefined)?.trim() || undefined;
       try {
         const result = await bookVisit({
           dateStr: date,
           time,
           summary: `Visita: ${ctx.customerName}`,
           description: `Cliente: ${ctx.customerName} (${ctx.customerPhone})${notes ? `\n${notes}` : ""}`,
+          clientEmail,
         });
-        logger.info("agent.visit_booked", { customerPhone: ctx.customerPhone, date, time, eventId: result.eventId });
-        return JSON.stringify({ booked: true, date, time });
+        logger.info("agent.visit_booked", {
+          customerPhone: ctx.customerPhone,
+          date,
+          time,
+          eventId: result.eventId,
+          rep: result.repName,
+          invited: Boolean(clientEmail),
+        });
+        return JSON.stringify({ booked: true, date, time, assigned_to: result.repName, invited: Boolean(clientEmail) });
       } catch (error) {
         logger.error("calendar.book_visit_failed", { customerPhone: ctx.customerPhone, date, time, error: String(error) });
         return JSON.stringify({

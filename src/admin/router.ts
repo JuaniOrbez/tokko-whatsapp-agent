@@ -6,6 +6,7 @@ import {
   type TokkoStage,
   type CommunicationStyleOverride,
   type EscalationContact,
+  type SalesRep,
 } from "../settings.js";
 import { initiateConversation } from "../agent/orchestrator.js";
 import { renderConversationsList, renderConversationDetail, renderDailySummaryView } from "./conversationsView.js";
@@ -142,6 +143,17 @@ adminRouter.post("/admin/config", (req: Request, res: Response) => {
     .map((match, i) => ({ match: match.trim(), style: (overrideStyles[i] ?? "").trim() }))
     .filter((o) => o.match !== "" && o.style !== "");
 
+  const repNames = toArray(body.repName);
+  const repEmails = toArray(body.repEmail);
+  const repCalendarIds = toArray(body.repCalendarId);
+  const reps: SalesRep[] = repNames
+    .map((name, i) => ({
+      name: name.trim(),
+      email: (repEmails[i] ?? "").trim(),
+      calendarId: (repCalendarIds[i] ?? "").trim(),
+    }))
+    .filter((r) => r.name !== "" && r.calendarId !== "");
+
   const settings: AppSettings = {
     escalationContacts,
     zonapropLinksFileName: String(body.zonapropLinksFileName ?? "").trim() || "Links Zonaprop",
@@ -159,7 +171,7 @@ adminRouter.post("/admin/config", (req: Request, res: Response) => {
     initiateConversationTemplateText: String(body.initiateTemplateText ?? "").trim() || undefined,
     dailySummaryHour: toNumberOrUndefined(body.dailySummaryHour as string | undefined) ?? 20,
     visits: {
-      calendarId: String(body.visitsCalendarId ?? "").trim() || undefined,
+      reps,
       durationMinutes: toNumberOrUndefined(body.visitsDurationMinutes as string | undefined) ?? 30,
       businessHourStart: toNumberOrUndefined(body.visitsBusinessHourStart as string | undefined) ?? 10,
       businessHourEnd: toNumberOrUndefined(body.visitsBusinessHourEnd as string | undefined) ?? 18,
@@ -211,6 +223,15 @@ function esc(value: string | number | undefined): string {
         return "&#39;";
     }
   });
+}
+
+function renderRepRow(rep: Partial<SalesRep>): string {
+  return `
+              <div class="rep-row">
+                <input type="text" name="repName" value="${esc(rep.name)}" placeholder="Nombre">
+                <input type="text" name="repEmail" value="${esc(rep.email)}" placeholder="mail@ejemplo.com (opcional)">
+                <input type="text" name="repCalendarId" value="${esc(rep.calendarId)}" placeholder="ID de su calendario">
+              </div>`;
 }
 
 function renderStageRow(stage: Partial<TokkoStage>): string {
@@ -388,6 +409,8 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
     ...Array.from({ length: EXTRA_BLANK_STYLE_OVERRIDE_ROWS }, () => renderStyleOverrideRow({})),
   ].join("\n");
 
+  const repRows = [...settings.visits.reps.map(renderRepRow), renderRepRow({})].join("\n");
+
   return `<!doctype html>
 <html lang="es">
 <head>
@@ -492,6 +515,14 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   }
   .stage-row { display: grid; grid-template-columns: 1fr 1.4fr 90px; gap: 8px; }
   @media (max-width: 480px) { .stage-row, .stage-row-header { grid-template-columns: 1fr; } }
+  .rep-rows { display: flex; flex-direction: column; gap: 9px; }
+  .rep-row-header {
+    display: grid; grid-template-columns: 1fr 1.2fr 1.6fr; gap: 8px;
+    font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); padding: 0 2px; font-weight: 600;
+  }
+  .rep-row { display: grid; grid-template-columns: 1fr 1.2fr 1.6fr; gap: 8px; }
+  @media (max-width: 480px) { .rep-row, .rep-row-header { grid-template-columns: 1fr; } }
   .actions { position: sticky; bottom: 16px; padding-top: 4px; }
   button {
     padding: 13px 22px; font-size: 0.95rem; font-weight: 600;
@@ -625,9 +656,13 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
         <summary><span class="icon">📅</span> Visitas / Reuniones<span class="chevron">›</span></summary>
         <div class="section-body">
           <div class="field">
-            <label for="visitsCalendarId">ID del calendario de Google Calendar</label>
-            <input type="text" id="visitsCalendarId" name="visitsCalendarId" value="${esc(settings.visits.calendarId)}" placeholder="algo@group.calendar.google.com">
-            <div class="hint">Un calendario compartido con la cuenta de servicio (mismo permiso de "Hacer cambios en los eventos" que le diste a la carpeta de Drive) — ver docs/SETUP.md. Sin esto, el agente no puede coordinar visitas.</div>
+            <label>Comerciales (cada uno con su propio calendario)</label>
+            <div class="rep-rows" id="repRows">
+              <div class="rep-row-header"><span>Nombre</span><span>Mail (opcional)</span><span>ID de su calendario</span></div>
+              ${repRows}
+            </div>
+            <button type="button" class="add-row-btn" id="addRepRowBtn">+ Agregar comercial</button>
+            <div class="hint">Cada comercial comparte su propio calendario con la cuenta de servicio (mismo permiso de "Hacer cambios en los eventos" que le diste a la carpeta de Drive) — ver docs/SETUP.md. Al coordinar una visita, el agente cruza la disponibilidad de todos y agenda en el calendario de uno que esté libre. Sin ningún comercial cargado, el agente no puede coordinar visitas. Para sacar uno, borrale el nombre.</div>
           </div>
           <div class="field">
             <label for="visitsDurationMinutes">Duración de cada visita (minutos)</label>
@@ -671,6 +706,13 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
       <input type="text" name="styleOverrideStyle" placeholder="Instrucciones de tono">
     </div>
   </template>
+  <template id="repRowTemplate">
+    <div class="rep-row">
+      <input type="text" name="repName" placeholder="Nombre">
+      <input type="text" name="repEmail" placeholder="mail@ejemplo.com (opcional)">
+      <input type="text" name="repCalendarId" placeholder="ID de su calendario">
+    </div>
+  </template>
   <script>
     document.getElementById('addStageRowBtn').addEventListener('click', function () {
       var tpl = document.getElementById('stageRowTemplate');
@@ -686,6 +728,11 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
       var tpl = document.getElementById('overrideRowTemplate');
       var row = tpl.content.cloneNode(true);
       document.getElementById('overrideRows').appendChild(row);
+    });
+    document.getElementById('addRepRowBtn').addEventListener('click', function () {
+      var tpl = document.getElementById('repRowTemplate');
+      var row = tpl.content.cloneNode(true);
+      document.getElementById('repRows').appendChild(row);
     });
   </script>
 </body>
