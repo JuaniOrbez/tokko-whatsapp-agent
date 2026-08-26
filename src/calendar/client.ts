@@ -225,6 +225,7 @@ export async function bookVisit(input: BookVisitInput): Promise<BookVisitResult>
     end,
     summary: input.summary,
     description: input.description,
+    organizerEmail: rep.email || undefined,
   });
 
   return {
