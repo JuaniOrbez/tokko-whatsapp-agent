@@ -14,6 +14,9 @@ export interface TokkoStage {
 }
 
 export interface EscalationContact {
+  // Solo informativo (quién es este número) — no se usa para elegir a
+  // quién escalar, eso lo decide "reason". Puede quedar vacío.
+  name: string;
   phone: string;
   // Motivo/categoría de este contacto (ej. "Consultas técnicas"), texto
   // libre — el agente elige a cuál avisar según el motivo de la consulta
@@ -24,7 +27,16 @@ export interface EscalationContact {
 }
 
 export interface SalesRep {
+  // Si hay más de un comercial con el mismo nombre de pila, cargá también
+  // el apellido acá (ej. "Martín Pérez") — es el único campo por el que
+  // el cliente puede pedir a alguien en particular (ver
+  // calendar/client.ts#findMatchingReps), y si el nombre pedido matchea a
+  // más de uno, el agente no adivina: le pide al cliente que aclare.
   name: string;
+  // WhatsApp de este comercial (E.164) — al agendarle una visita, el
+  // agente le manda un aviso ahí. Si se deja vacío, la visita se agenda
+  // igual, simplemente no se le notifica a nadie.
+  phone: string;
   // Opcional — si se carga, se usa como referencia interna (no se le manda
   // nada automáticamente a este mail, solo al del cliente).
   email: string;
@@ -126,7 +138,11 @@ function defaultSettings(): AppSettings {
   ];
 
   return {
-    escalationContacts: (config.HUMAN_ESCALATION_WHATSAPP_NUMBERS ?? []).map((phone) => ({ phone, reason: "" })),
+    escalationContacts: (config.HUMAN_ESCALATION_WHATSAPP_NUMBERS ?? []).map((phone) => ({
+      name: "",
+      phone,
+      reason: "",
+    })),
     zonapropLinksFileName: "Links Zonaprop",
     driveFolderId: undefined,
     tokko: {
@@ -152,7 +168,9 @@ function normalize(loaded: Partial<AppSettings>): AppSettings {
   // tenía escalationNumbers como string[] plano.
   const legacyNumbers = (loaded as unknown as { escalationNumbers?: string[] }).escalationNumbers;
   const escalationContacts =
-    loaded.escalationContacts ?? legacyNumbers?.map((phone) => ({ phone, reason: "" })) ?? defaults.escalationContacts;
+    loaded.escalationContacts ??
+    legacyNumbers?.map((phone) => ({ name: "", phone, reason: "" })) ??
+    defaults.escalationContacts;
 
   // Migración: settings.json de antes de soportar varios comerciales tenía
   // visits.calendarId como un único string en vez de una lista de reps.
@@ -161,7 +179,7 @@ function normalize(loaded: Partial<AppSettings>): AppSettings {
   const reps =
     visitsLoaded.reps ??
     (legacyVisits?.calendarId
-      ? [{ name: "Equipo", email: "", calendarId: legacyVisits.calendarId }]
+      ? [{ name: "Equipo", phone: "", email: "", calendarId: legacyVisits.calendarId }]
       : defaults.visits.reps);
 
   return {

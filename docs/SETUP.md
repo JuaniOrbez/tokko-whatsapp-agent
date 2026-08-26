@@ -210,8 +210,9 @@ configuraste.
 
 1. En **`/admin/config`** (sección "Números de contacto"), cargá el/los
    número/s del equipo en formato E.164 (ej. `+5491122334455`), uno por
-   fila, con un **motivo** opcional en la segunda columna (ej. "Consultas
-   técnicas", "Consultas generales").
+   fila, con **nombre** opcional (solo para identificar de quién es cada
+   número, no cambia el comportamiento) y **motivo** opcional (ej.
+   "Consultas técnicas", "Consultas generales").
 2. El motivo le sirve al agente para elegir a quién avisar: cuando escala,
    además de la pregunta del cliente elige una categoría (armada
    dinámicamente a partir de los motivos que hayas cargado, igual que las
@@ -276,14 +277,26 @@ agenda en el de uno que esté libre justo en ese momento.
    3. En esa misma pantalla, bajá hasta "Integrar calendario" y copiá el
       **ID de calendario** (termina en `@group.calendar.google.com`).
 3. En `/admin/config`, sección "Visitas / Reuniones", cargá una fila por
-   comercial (nombre, mail opcional, el ID de calendario de ese paso). Ahí
-   mismo se configura la duración de cada visita y el horario laboral
-   (hora Argentina) dentro del cual el agente ofrece y agenda horarios.
+   comercial: nombre, **su WhatsApp** (para que el agente le avise cuando
+   se le agende una visita — ver más abajo), mail opcional, y el ID de
+   calendario de ese paso. Ahí mismo se configura la duración de cada
+   visita y el horario laboral (hora Argentina) dentro del cual el agente
+   ofrece y agenda horarios.
 
 Sin ningún comercial cargado, `check_visit_availability`/`book_visit`
 simplemente le dicen al agente que no hay calendario configurado — sigue
 funcionando todo lo demás con normalidad, y el agente escala a un humano
 en vez de insistir con coordinar la visita él mismo.
+
+### Avisarle al comercial por WhatsApp
+
+Apenas se agenda una visita, el agente le manda un WhatsApp al comercial
+asignado (al número cargado en su fila) con los datos del cliente, la
+fecha/hora y el detalle que haya dado. Si ese comercial no tiene teléfono
+cargado, la visita se agenda igual — simplemente no se le avisa a nadie.
+Es un mensaje saliente más, usa el mismo `TWILIO_WHATSAPP_FROM` de
+siempre (mientras estés en el sandbox, ese número también tiene que
+sumarse mandando `join <palabra-clave>`).
 
 ### Invitar al cliente por mail
 
@@ -295,10 +308,14 @@ crea, sin que haya que hacer nada más de este lado.
 ### Pedir un comercial en particular
 
 Si el cliente pide específicamente a alguien ("quiero que me atienda
-Martín"), el agente busca ese nombre entre los comerciales cargados
-(sin importar mayúsculas/acentos) y solo mira/agenda en su calendario —
-si esa persona no está libre en el horario elegido, no la reemplaza por
-otra sin avisar, le cuenta al cliente y propone alternativas.
+Martín"), el agente busca ese nombre entre los comerciales cargados (sin
+importar mayúsculas/acentos) y solo mira/agenda en su calendario — si esa
+persona no está libre en el horario elegido, no la reemplaza por otra sin
+avisar, le cuenta al cliente y propone alternativas. **Si hay dos
+comerciales con el mismo nombre de pila**, cargá también el apellido en
+el campo "Nombre" (ej. "Martín Pérez" y "Martín Gómez") — si el cliente
+solo dice "Martín" y hay más de uno que coincide, el agente no elige por
+su cuenta: le pide que aclare cuál.
 
 ## 6. Claude (Anthropic)
 

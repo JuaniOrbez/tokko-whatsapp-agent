@@ -1,12 +1,12 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { tokkoClient } from "../tokko/client.js";
 import { findFilesByName, findZonapropLink } from "../drive/client.js";
-import { sendDocumentByLink } from "../whatsapp/client.js";
+import { sendDocumentByLink, sendText } from "../whatsapp/client.js";
 import { logger } from "../logger.js";
 import { getSettings } from "../settings.js";
 import { escalateToHumans } from "./escalation.js";
 import { appendToolUsage } from "./toolUsageLog.js";
-import { getAvailableSlots, bookVisit, findRepByName } from "../calendar/client.js";
+import { getAvailableSlots, bookVisit, findMatchingReps } from "../calendar/client.js";
 
 export interface AgentContext {
   customerPhone: string;
@@ -444,13 +444,24 @@ export async function executeTool(
           reason: "No hay ningún comercial con calendario configurado todavía (ver /admin).",
         });
       }
-      if (repName && !findRepByName(repName)) {
-        return JSON.stringify({
-          date,
-          hasCalendar: true,
-          repNotFound: true,
-          knownReps: getSettings().visits.reps.map((r) => r.name),
-        });
+      if (repName) {
+        const matches = findMatchingReps(repName);
+        if (matches.length === 0) {
+          return JSON.stringify({
+            date,
+            hasCalendar: true,
+            repNotFound: true,
+            knownReps: getSettings().visits.reps.map((r) => r.name),
+          });
+        }
+        if (matches.length > 1) {
+          return JSON.stringify({
+            date,
+            hasCalendar: true,
+            repAmbiguous: true,
+            matches: matches.map((r) => r.name),
+          });
+        }
       }
       try {
         const availableTimes = await getAvailableSlots(date, repName);
@@ -484,6 +495,20 @@ export async function executeTool(
           rep: result.repName,
           invited: Boolean(clientEmail),
         });
+
+        // Best-effort: si falla el aviso, la visita ya quedó agendada en el
+        // calendario igual — no hace falta que le pese al cliente.
+        if (result.repPhone) {
+          const notifyText =
+            `📅 Nueva visita agendada\n` +
+            `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
+            `Cuándo: ${date} ${time}` +
+            (notes ? `\nDetalle: ${notes}` : "");
+          sendText(result.repPhone, notifyText).catch((error) => {
+            logger.warn("agent.visit_notify_failed", { rep: result.repName, error: String(error) });
+          });
+        }
+
         return JSON.stringify({ booked: true, date, time, assigned_to: result.repName, invited: Boolean(clientEmail) });
       } catch (error) {
         logger.error("calendar.book_visit_failed", { customerPhone: ctx.customerPhone, date, time, repName, error: String(error) });

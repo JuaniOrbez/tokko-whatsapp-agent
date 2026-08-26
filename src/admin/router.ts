@@ -114,10 +114,15 @@ function toArray(value: unknown): string[] {
 adminRouter.post("/admin/config", (req: Request, res: Response) => {
   const body = req.body as Record<string, unknown>;
 
+  const escalationNames = toArray(body.escalationName);
   const escalationPhones = toArray(body.escalationPhone);
   const escalationReasons = toArray(body.escalationReason);
   const escalationContacts: EscalationContact[] = escalationPhones
-    .map((phone, i) => ({ phone: phone.trim(), reason: (escalationReasons[i] ?? "").trim() }))
+    .map((phone, i) => ({
+      name: (escalationNames[i] ?? "").trim(),
+      phone: phone.trim(),
+      reason: (escalationReasons[i] ?? "").trim(),
+    }))
     .filter((c) => c.phone !== "");
 
   const toNumberOrUndefined = (v: string | undefined): number | undefined => {
@@ -144,11 +149,13 @@ adminRouter.post("/admin/config", (req: Request, res: Response) => {
     .filter((o) => o.match !== "" && o.style !== "");
 
   const repNames = toArray(body.repName);
+  const repPhones = toArray(body.repPhone);
   const repEmails = toArray(body.repEmail);
   const repCalendarIds = toArray(body.repCalendarId);
   const reps: SalesRep[] = repNames
     .map((name, i) => ({
       name: name.trim(),
+      phone: (repPhones[i] ?? "").trim(),
       email: (repEmails[i] ?? "").trim(),
       calendarId: (repCalendarIds[i] ?? "").trim(),
     }))
@@ -228,7 +235,8 @@ function esc(value: string | number | undefined): string {
 function renderRepRow(rep: Partial<SalesRep>): string {
   return `
               <div class="rep-row">
-                <input type="text" name="repName" value="${esc(rep.name)}" placeholder="Nombre">
+                <input type="text" name="repName" value="${esc(rep.name)}" placeholder="Nombre (+ apellido si hay otro igual)">
+                <input type="text" name="repPhone" value="${esc(rep.phone)}" placeholder="+5491122334455">
                 <input type="text" name="repEmail" value="${esc(rep.email)}" placeholder="mail@ejemplo.com (opcional)">
                 <input type="text" name="repCalendarId" value="${esc(rep.calendarId)}" placeholder="ID de su calendario">
               </div>`;
@@ -246,6 +254,7 @@ function renderStageRow(stage: Partial<TokkoStage>): string {
 function renderNumberRow(contact: Partial<EscalationContact>): string {
   return `
             <div class="number-row">
+              <input type="text" name="escalationName" value="${esc(contact.name)}" placeholder="Nombre (opcional)">
               <input type="text" name="escalationPhone" value="${esc(contact.phone)}" placeholder="+5491122334455">
               <input type="text" name="escalationReason" value="${esc(contact.reason)}" placeholder="Motivo (opcional, ej. Consultas técnicas)">
             </div>`;
@@ -502,8 +511,13 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 16px; }
   @media (max-width: 480px) { .stages { grid-template-columns: 1fr; } }
   .number-rows { display: flex; flex-direction: column; gap: 9px; margin-bottom: 4px; }
-  .number-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
-  @media (max-width: 480px) { .number-row { grid-template-columns: 1fr; } }
+  .number-row-header {
+    display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 8px;
+    font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); padding: 0 2px; font-weight: 600;
+  }
+  .number-row { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 8px; }
+  @media (max-width: 480px) { .number-row, .number-row-header { grid-template-columns: 1fr; } }
   .override-rows { display: flex; flex-direction: column; gap: 9px; margin-bottom: 4px; }
   .override-row { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
   @media (max-width: 480px) { .override-row { grid-template-columns: 1fr; } }
@@ -517,11 +531,11 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   @media (max-width: 480px) { .stage-row, .stage-row-header { grid-template-columns: 1fr; } }
   .rep-rows { display: flex; flex-direction: column; gap: 9px; }
   .rep-row-header {
-    display: grid; grid-template-columns: 1fr 1.2fr 1.6fr; gap: 8px;
+    display: grid; grid-template-columns: 1.1fr 1fr 1.2fr 1.4fr; gap: 8px;
     font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em;
     color: var(--text-muted); padding: 0 2px; font-weight: 600;
   }
-  .rep-row { display: grid; grid-template-columns: 1fr 1.2fr 1.6fr; gap: 8px; }
+  .rep-row { display: grid; grid-template-columns: 1.1fr 1fr 1.2fr 1.4fr; gap: 8px; }
   @media (max-width: 480px) { .rep-row, .rep-row-header { grid-template-columns: 1fr; } }
   .actions { position: sticky; bottom: 16px; padding-top: 4px; }
   button {
@@ -559,10 +573,11 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
           <div class="field">
             <label>Números de WhatsApp que reciben los escalamientos</label>
             <div class="number-rows" id="numberRows">
+              <div class="number-row-header"><span>Nombre</span><span>Número</span><span>Motivo</span></div>
               ${numberRows}
             </div>
             <button type="button" class="add-row-btn" id="addNumberRowBtn">+ Agregar número</button>
-            <div class="hint">El motivo es opcional y le sirve al agente para elegir a quién avisar según el tipo de consulta (ej. "Consultas técnicas" vs "Consultas generales") — si lo dejás vacío, ese número recibe lo que no matchee ningún motivo específico. No puede ser un grupo de WhatsApp (la API no lo permite) — cada fila es un número individual. Mientras estés en el sandbox de Twilio, cada uno tiene que sumarse mandándole "join &lt;palabra-clave&gt;" al número del sandbox.</div>
+            <div class="hint">El nombre es solo para identificar de quién es cada número, es opcional. El motivo le sirve al agente para elegir a quién avisar según el tipo de consulta (ej. "Consultas técnicas" vs "Consultas generales") — si lo dejás vacío, ese número recibe lo que no matchee ningún motivo específico. No puede ser un grupo de WhatsApp (la API no lo permite) — cada fila es un número individual. Mientras estés en el sandbox de Twilio, cada uno tiene que sumarse mandándole "join &lt;palabra-clave&gt;" al número del sandbox.</div>
           </div>
         </div>
       </details>
@@ -658,11 +673,11 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
           <div class="field">
             <label>Comerciales (cada uno con su propio calendario)</label>
             <div class="rep-rows" id="repRows">
-              <div class="rep-row-header"><span>Nombre</span><span>Mail (opcional)</span><span>ID de su calendario</span></div>
+              <div class="rep-row-header"><span>Nombre</span><span>Teléfono</span><span>Mail (opcional)</span><span>ID de su calendario</span></div>
               ${repRows}
             </div>
             <button type="button" class="add-row-btn" id="addRepRowBtn">+ Agregar comercial</button>
-            <div class="hint">Cada comercial comparte su propio calendario con la cuenta de servicio (mismo permiso de "Hacer cambios en los eventos" que le diste a la carpeta de Drive) — ver docs/SETUP.md. Al coordinar una visita, el agente cruza la disponibilidad de todos y agenda en el calendario de uno que esté libre. Sin ningún comercial cargado, el agente no puede coordinar visitas. Para sacar uno, borrale el nombre.</div>
+            <div class="hint">Cada comercial comparte su propio calendario con la cuenta de servicio (mismo permiso de "Hacer cambios en los eventos" que le diste a la carpeta de Drive) — ver docs/SETUP.md. Al coordinar una visita, el agente cruza la disponibilidad de todos y agenda en el calendario de uno que esté libre, y le avisa por WhatsApp al número cargado acá (si lo dejás vacío, se agenda igual pero no se le notifica a nadie). Si hay dos comerciales con el mismo nombre de pila, agregá el apellido para poder diferenciarlos (ej. "Martín Pérez" / "Martín Gómez") — si el cliente pide un nombre que coincide con más de uno, el agente le va a pedir que aclare en vez de elegir por su cuenta. Sin ningún comercial cargado, el agente no puede coordinar visitas. Para sacar uno, borrale el nombre.</div>
           </div>
           <div class="field">
             <label for="visitsDurationMinutes">Duración de cada visita (minutos)</label>
@@ -696,6 +711,7 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   </template>
   <template id="numberRowTemplate">
     <div class="number-row">
+      <input type="text" name="escalationName" placeholder="Nombre (opcional)">
       <input type="text" name="escalationPhone" placeholder="+5491122334455">
       <input type="text" name="escalationReason" placeholder="Motivo (opcional, ej. Consultas técnicas)">
     </div>
@@ -708,7 +724,8 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   </template>
   <template id="repRowTemplate">
     <div class="rep-row">
-      <input type="text" name="repName" placeholder="Nombre">
+      <input type="text" name="repName" placeholder="Nombre (+ apellido si hay otro igual)">
+      <input type="text" name="repPhone" placeholder="+5491122334455">
       <input type="text" name="repEmail" placeholder="mail@ejemplo.com (opcional)">
       <input type="text" name="repCalendarId" placeholder="ID de su calendario">
     </div>

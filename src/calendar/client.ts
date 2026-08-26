@@ -40,13 +40,19 @@ function normalizeName(s: string): string {
     .trim();
 }
 
-/** Busca un comercial por nombre (sin importar acentos/mayúsculas, alcanza con que uno contenga al otro). */
-export function findRepByName(name: string): SalesRep | undefined {
+/** Todos los comerciales que matchean `name` (sin importar acentos/mayúsculas, alcanza con que uno contenga al otro) — puede haber más de uno si hay nombres repetidos, ver docs/SETUP.md. */
+export function findMatchingReps(name: string): SalesRep[] {
   const target = normalizeName(name);
-  return getSettings().visits.reps.find((r) => {
+  return getSettings().visits.reps.filter((r) => {
     const repName = normalizeName(r.name);
     return repName.includes(target) || target.includes(repName);
   });
+}
+
+/** Único comercial que matchea `name` — undefined si no hay ninguno, o si hay más de uno (ambiguo). */
+export function findRepByName(name: string): SalesRep | undefined {
+  const matches = findMatchingReps(name);
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 interface BusyRange {
@@ -130,6 +136,9 @@ export interface BookVisitResult {
   eventId: string;
   htmlLink?: string;
   repName: string;
+  // Vacío si ese comercial no cargó teléfono — el llamador decide si
+  // avisa por WhatsApp o no.
+  repPhone: string;
 }
 
 /**
@@ -155,11 +164,16 @@ export async function bookVisit(input: BookVisitInput): Promise<BookVisitResult>
 
   let candidateReps = settings.reps;
   if (input.repName) {
-    const match = findRepByName(input.repName);
-    if (!match) {
+    const matches = findMatchingReps(input.repName);
+    if (matches.length === 0) {
       throw new Error(`No encontré a "${input.repName}" entre los comerciales cargados.`);
     }
-    candidateReps = [match];
+    if (matches.length > 1) {
+      throw new Error(
+        `Hay más de un comercial que coincide con "${input.repName}" (${matches.map((r) => r.name).join(", ")}) — pedile al cliente que aclare cuál, con el apellido si hace falta.`,
+      );
+    }
+    candidateReps = matches;
   }
 
   const rep = await findFreeRepAmong(candidateReps, start, end);
@@ -183,5 +197,10 @@ export async function bookVisit(input: BookVisitInput): Promise<BookVisitResult>
     },
   });
 
-  return { eventId: res.data.id ?? "", htmlLink: res.data.htmlLink ?? undefined, repName: rep.name };
+  return {
+    eventId: res.data.id ?? "",
+    htmlLink: res.data.htmlLink ?? undefined,
+    repName: rep.name,
+    repPhone: rep.phone,
+  };
 }
