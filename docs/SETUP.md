@@ -433,7 +433,11 @@ contacto con:
   de esa charla (la misma vista de "Ver conversaciones").
 
 Es la lista para que alguien del equipo la revise de tanto en tanto y
-aplique cada cambio de etapa a mano en la cuenta de Tokko.
+aplique cada cambio de etapa a mano en la cuenta de Tokko. Arriba hay un
+buscador que filtra al toque (sin recargar la página) por nombre,
+apellido, teléfono, email, propiedad/emprendimiento consultado o etapa —
+alcanza con que el texto que escribas aparezca en cualquiera de esos
+campos de la tarjeta.
 
 ### Métricas (`/admin/metrics`)
 

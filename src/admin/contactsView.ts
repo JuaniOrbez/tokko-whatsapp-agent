@@ -50,8 +50,17 @@ export function renderContactsList(): string {
       const email = findEmail(entries);
       const interests = [...(developmentsByPhone.get(c.phone) ?? []), ...(locationsByPhone.get(c.phone) ?? [])];
 
+      // Nombre y apellido conviven en un solo campo de texto libre (lo que
+      // haya mandado WhatsApp como nombre de perfil), así que buscar por
+      // cualquiera de los dos ya funciona buscando dentro de este texto —
+      // no hace falta separarlos.
+      const searchBlob = [c.name, c.phone, email, ...interests, stage?.stageLabel, stage?.reason]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
       return `
-      <div class="card contact-card">
+      <div class="card contact-card" data-search="${esc(searchBlob)}">
         <div class="contact-header">
           <span class="contact-name">${esc(c.name)}</span>
           ${stage ? `<span class="stage-badge">${esc(stage.stageLabel)}</span>` : `<span class="meta">Sin etapa anotada</span>`}
@@ -72,7 +81,30 @@ export function renderContactsList(): string {
     <div class="hint" style="margin-bottom: 16px;">
       Etapa según lo que detectó el agente en la charla — Tokko no permite actualizarla por API, así que hay que aplicarla a mano en tu cuenta de Tokko.
     </div>
-    ${rows}
+    <div class="search-field">
+      <input type="text" id="contactSearch" placeholder="Buscar por nombre, apellido, teléfono, email, propiedad, emprendimiento o etapa...">
+    </div>
+    <div id="contactRows">
+      ${rows}
+    </div>
+    <div id="contactEmpty" class="empty" style="display:none;">No hay contactos que coincidan con la búsqueda.</div>
+    <script>
+      (function () {
+        var input = document.getElementById('contactSearch');
+        var empty = document.getElementById('contactEmpty');
+        var cards = document.querySelectorAll('#contactRows .contact-card');
+        input.addEventListener('input', function () {
+          var q = input.value.trim().toLowerCase();
+          var visible = 0;
+          cards.forEach(function (card) {
+            var match = !q || card.getAttribute('data-search').indexOf(q) !== -1;
+            card.style.display = match ? '' : 'none';
+            if (match) visible++;
+          });
+          empty.style.display = visible === 0 ? '' : 'none';
+        });
+      })();
+    </script>
     <style>
       .contact-card { display: flex; flex-direction: column; gap: 12px; }
       .contact-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -88,6 +120,12 @@ export function renderContactsList(): string {
         font-weight: 600; padding: 3px 10px; border-radius: 999px;
       }
       .hint { font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }
+      .search-field { margin-bottom: 16px; }
+      .search-field input {
+        width: 100%; padding: 11px 14px; font-size: 0.92rem; font-family: inherit;
+        border: 1.5px solid var(--border); border-radius: 10px; background: #fff; color: var(--text);
+      }
+      .search-field input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(109,94,248,0.15); }
     </style>
   `;
   return pageShell("Contactos", body);
