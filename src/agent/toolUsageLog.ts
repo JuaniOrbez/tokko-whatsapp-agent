@@ -12,7 +12,7 @@ import { logger } from "../logger.js";
 export interface ToolUsageEntry {
   ts: number;
   phone: string;
-  kind: "development" | "typology";
+  kind: "development" | "typology" | "location";
   value: string;
 }
 
@@ -52,4 +52,16 @@ export function firstValueByPhone(kind: ToolUsageEntry["kind"]): Map<string, str
     }
   }
   return new Map([...result.entries()].map(([phone, v]) => [phone, v.value]));
+}
+
+/** Todos los valores distintos mencionados por teléfono para un tipo dado, en orden de aparición — para /admin/contacts. */
+export function valuesByPhone(kind: ToolUsageEntry["kind"]): Map<string, string[]> {
+  const result = new Map<string, string[]>();
+  for (const e of readAllEntries()) {
+    if (e.kind !== kind) continue;
+    const list = result.get(e.phone) ?? [];
+    if (!list.includes(e.value)) list.push(e.value);
+    result.set(e.phone, list);
+  }
+  return result;
 }

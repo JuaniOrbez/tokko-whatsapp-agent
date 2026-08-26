@@ -417,12 +417,23 @@ edita desde el navegador, en caliente, sin tocar la terminal:
 Como Tokko no permite actualizar la etapa de un contacto por API (ver
 sección 1, punto 4), el agente anota localmente qué etapa le corresponde a
 cada cliente según cómo viene la charla — no lo escribe en Tokko, solo lo
-registra. Esta pantalla lista a todos los que escribieron, con la última
-etapa anotada (y el motivo, si lo hay) junto al teléfono y el último
-mensaje. Es la lista para que alguien del equipo la revise de tanto en
-tanto y aplique cada cambio a mano en la cuenta de Tokko — tocando un
-contacto se abre su conversación completa por si hace falta más contexto
-antes de aplicar el cambio.
+registra. Esta pantalla lista a todos los que escribieron, una tarjeta por
+contacto con:
+
+- **Nombre** (el que llegó por WhatsApp) y **etapa** actual anotada (si
+  hay una).
+- **Teléfono** y **email** — el email solo aparece si el cliente lo
+  escribió en algún mensaje (no hay otra fuente: Tokko no expone el
+  contacto por teléfono, ver sección 1). Si nunca lo mandó, dice "Sin
+  datos".
+- **Actividad**: cantidad de mensajes y rango de fechas de la charla.
+- **Preguntó por**: emprendimientos y zonas que mencionó durante la
+  charla (se arma solo, a partir de las búsquedas que hizo el agente).
+- Un link **"Ver conversación completa"** que lleva al detalle completo
+  de esa charla (la misma vista de "Ver conversaciones").
+
+Es la lista para que alguien del equipo la revise de tanto en tanto y
+aplique cada cambio de etapa a mano en la cuenta de Tokko.
 
 ### Métricas (`/admin/metrics`)
 

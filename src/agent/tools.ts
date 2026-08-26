@@ -312,6 +312,10 @@ export async function executeTool(
           value: `${roomsMin}+ ambientes`,
         });
       }
+      const location = (input.location as string | undefined)?.trim();
+      if (location) {
+        appendToolUsage({ ts: Date.now(), phone: ctx.customerPhone, kind: "location", value: location });
+      }
       const tokkoSettings = getSettings().tokko;
       const operationId =
         operation === "venta"
@@ -326,7 +330,7 @@ export async function executeTool(
         priceTo: input.price_max as number | undefined,
         currency: (input.currency as string | undefined) ?? "USD",
         roomAmountFrom: input.rooms_min as number | undefined,
-        location: input.location as string | undefined,
+        location,
         limit: 8,
       });
 

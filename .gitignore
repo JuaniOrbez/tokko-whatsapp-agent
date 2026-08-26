@@ -7,3 +7,4 @@ google-service-account.json
 data/settings.json
 data/conversations.jsonl
 data/stages.jsonl
+data/tool_usage.jsonl
