@@ -196,11 +196,14 @@ function buildVisitTools(): Anthropic.Tool[] {
           time: { type: "string", description: 'Hora en formato HH:mm (hora Argentina), ej. "15:30".' },
           notes: {
             type: "string",
-            description: "Detalle de la visita: propiedad/emprendimiento, dirección, motivo del encuentro.",
+            description:
+              "Sobre qué es la visita/reunión: propiedad o emprendimiento puntual (con dirección si la " +
+              "tenés) o el tema a tratar. Preguntaselo al cliente antes de agendar si todavía no surgió " +
+              "en la charla — el comercial lo necesita para llegar preparado.",
           },
           rep_name: repNameProperty,
         },
-        required: ["date", "time"],
+        required: ["date", "time", "notes"],
       },
     },
   ];
