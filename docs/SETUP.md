@@ -253,30 +253,45 @@ edita desde el navegador, en caliente, sin tocar la terminal:
    quieras, no la reutilices de otro lado. Sin esto, `/admin` devuelve un
    error 503 en vez de quedar sin protección.
 2. Con el servidor corriendo, entrá a `http://localhost:3000/admin` (o tu
-   dominio + `/admin` si ya lo tenés desplegado). Te va a pedir esa
-   contraseña en una pantalla de login (dura 7 días en el navegador; "Cerrar
-   sesión" desde el panel de inicio la borra antes).
-3. Desde ahí hay dos botones: **Métricas** (consultas por día y canal de
-   origen — ver más abajo) y **Configuración**, que es donde se edita todo
-   lo que antes había que tocar a mano en `.env` y reiniciar el servidor:
-   los números de escalamiento, la carpeta y el archivo de links de
-   Zonaprop en Drive, y los IDs de Tokko (operación venta/alquiler y las
-   etapas del workflow de Oportunidades — podés agregar, sacar o renombrar
-   etapas libremente, no es una lista fija). Al guardar, los cambios
-   aplican al toque, sin reiniciar nada.
+   dominio + `/admin` si ya lo tenés desplegado). Te va a pedir usuario y
+   contraseña en una pantalla de login (dura 7 días en el navegador;
+   "Cerrar sesión" desde el panel de inicio la borra antes). El usuario es
+   libre — hoy no hay distintos niveles de acceso, todos entran con la
+   misma `ADMIN_PASSWORD`, pero queda guardado en la sesión para cuando se
+   sumen roles más adelante.
+3. Desde ahí hay dos botones: **Métricas** (consultas por día, canal de
+   origen, emprendimiento y tipología — ver más abajo) y **Configuración**,
+   que es donde se edita todo lo que antes había que tocar a mano en
+   `.env` y reiniciar el servidor: los números de escalamiento, la carpeta
+   y el archivo de links de Zonaprop en Drive, y los IDs de Tokko
+   (operación venta/alquiler y las etapas del workflow de Oportunidades —
+   podés agregar, sacar o renombrar etapas libremente, no es una lista
+   fija). Al guardar, los cambios aplican al toque, sin reiniciar nada.
 
 ### Métricas (`/admin/metrics`)
 
-Muestra consultas nuevas por día (últimos 14 días) y por canal de origen.
-El canal se detecta en el primer mensaje de cada conversación: si viene de
-un anuncio de Instagram/Facebook ("click to WhatsApp") se detecta
-automático, con los datos de referral que manda Meta y reenvía Twilio; si
-el texto menciona "Zonaprop" se cuenta como tal; el resto queda como
-"WhatsApp directo". Esa detección de Zonaprop es un patrón simple sobre el
-texto del primer mensaje — convendría revisarlo con casos reales una vez
-que empiece a llegar tráfico desde ahí, capaz el mensaje precargado no dice
-literalmente "Zonaprop". El desglose por tipología y por emprendimiento
-consultado todavía no está — queda para una próxima vuelta.
+Muestra consultas nuevas por día (últimos 14 días) y, con el selector "Ver
+por" de arriba, se elige qué desglose ver — Canal de origen, Emprendimiento,
+Tipología, o cualquier combinación. Con exactamente dos tildadas, además de
+cada una por separado se arma un cruce entre ambas (ej. cuántas
+conversaciones preguntaron por "Torres del Parque" y vinieron de
+Instagram). Con las tres tildadas (el default) no se arma cruce, para no
+terminar con una tabla enorme — ahí quedan las tres por separado.
+
+- **Canal**: se detecta en el primer mensaje de cada conversación. Si viene
+  de un anuncio de Instagram/Facebook ("click to WhatsApp") se detecta
+  automático, con los datos de referral que manda Meta y reenvía Twilio; si
+  el texto menciona "Zonaprop" se cuenta como tal; el resto queda como
+  "WhatsApp directo". La detección de Zonaprop es un patrón simple sobre el
+  texto del primer mensaje — convendría revisarlo con casos reales, capaz
+  el mensaje precargado no dice literalmente "Zonaprop".
+- **Emprendimiento**: se completa la primera vez que el agente identifica
+  un proyecto puntual en la charla (al usar `search_developments` o
+  `get_development_details`) — si el cliente nunca preguntó por un
+  emprendimiento por nombre, esa conversación no aporta datos acá.
+- **Tipología**: se completa con la cantidad de ambientes cuando el cliente
+  la menciona en una búsqueda de propiedades — mismo caso, no todas las
+  conversaciones la tienen.
 
 ### Estilo del agente
 

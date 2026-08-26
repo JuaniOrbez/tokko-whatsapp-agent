@@ -9,7 +9,7 @@ import {
 import { initiateConversation } from "../agent/orchestrator.js";
 import { renderConversationsList, renderConversationDetail, renderDailySummaryView } from "./conversationsView.js";
 import { renderMetricsView } from "./metricsView.js";
-import { requireAdminAuth, checkPassword, setSessionCookie, clearSessionCookie } from "./auth.js";
+import { requireAdminAuth, checkPassword, setSessionCookie, clearSessionCookie, getSessionUsername } from "./auth.js";
 import { pageShell as layoutPageShell } from "./layout.js";
 import { logger } from "../logger.js";
 
@@ -31,13 +31,14 @@ adminRouter.get("/admin/login", (req: Request, res: Response) => {
 
 adminRouter.post("/admin/login", (req: Request, res: Response) => {
   const body = req.body as Record<string, string>;
+  const username = (body.username ?? "").trim();
   const password = body.password ?? "";
   const next = body.next && body.next.startsWith("/admin") ? body.next : "/admin";
   if (!checkPassword(password)) {
     res.redirect(`/admin/login?error=1&next=${encodeURIComponent(next)}`);
     return;
   }
-  setSessionCookie(res);
+  setSessionCookie(res, username);
   res.redirect(next);
 });
 
@@ -46,12 +47,24 @@ adminRouter.post("/admin/logout", (_req: Request, res: Response) => {
   res.redirect("/admin/login");
 });
 
-adminRouter.get("/admin", (_req: Request, res: Response) => {
-  res.type("html").send(renderLandingPage());
+adminRouter.get("/admin", (req: Request, res: Response) => {
+  res.type("html").send(renderLandingPage(getSessionUsername(req) ?? "admin"));
 });
 
-adminRouter.get("/admin/metrics", (_req: Request, res: Response) => {
-  res.type("html").send(renderMetricsView());
+adminRouter.get("/admin/metrics", (req: Request, res: Response) => {
+  // Los checkboxes del selector de dimensiones mandan "dims" repetido
+  // (?dims=a&dims=b) — express lo parsea como array salvo que sea uno
+  // solo, ahí queda como string. "submitted" distingue la primera visita
+  // (sin selección todavía -> mostrar todo) de haber desmarcado todo a
+  // propósito y enviado el formulario (-> no mostrar nada).
+  const validDims = new Set(["channel", "development", "typology"]);
+  const raw = req.query.dims;
+  const rawList = Array.isArray(raw) ? raw : raw !== undefined ? [raw] : [];
+  const dims = rawList.filter(
+    (d): d is "channel" | "development" | "typology" => typeof d === "string" && validDims.has(d),
+  );
+  const wasSubmitted = req.query.submitted === "1";
+  res.type("html").send(renderMetricsView(wasSubmitted ? dims : undefined));
 });
 
 adminRouter.get("/admin/config", (req: Request, res: Response) => {
@@ -211,38 +224,72 @@ function renderStyleOverrideRow(o: Partial<CommunicationStyleOverride>): string 
               </div>`;
 }
 
-function renderLandingPage(): string {
+const NARROW_PAGE_STYLE = `
+  <style>
+    .narrow { max-width: 300px; margin: 40px auto 0; display: flex; flex-direction: column; gap: 12px; }
+    .nav-btn { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #eaeaf3; border-radius: 14px; padding: 14px 16px; text-decoration: none; color: #16162a; box-shadow: 0 1px 2px rgba(23,21,60,0.05); transition: box-shadow .15s ease, transform .1s ease; }
+    .nav-btn:hover { box-shadow: 0 4px 14px rgba(23,21,60,0.08); transform: translateY(-1px); }
+    .nav-btn-icon { font-size: 1.3rem; }
+    .nav-btn-title { display: block; font-weight: 600; font-size: 0.95rem; }
+    .nav-btn-sub { display: block; font-size: 0.78rem; color: #75758c; margin-top: 2px; }
+    .hello { font-size: 0.85rem; color: #75758c; text-align: center; margin-bottom: 2px; }
+    .logout-btn { width: 100%; padding: 8px 16px; font-size: 0.82rem; background: none; color: #75758c; border: 1px solid #eaeaf3; border-radius: 8px; cursor: pointer; margin-top: 8px; }
+    .narrow-card { background: #fff; border: 1px solid #eaeaf3; border-radius: 14px; padding: 22px 20px; box-shadow: 0 1px 2px rgba(23,21,60,0.05); }
+    .narrow-field label { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 5px; }
+    .narrow-field input { width: 100%; padding: 9px 11px; border: 1.5px solid #eaeaf3; border-radius: 10px; font-size: 0.92rem; font-family: inherit; }
+    .narrow-field input:focus { outline: none; border-color: #6d5ef8; box-shadow: 0 0 0 3px #efedfe; }
+    .narrow-form { display: flex; flex-direction: column; gap: 12px; }
+    .narrow-submit { padding: 10px 18px; background: linear-gradient(120deg,#6d5ef8,#5646e0); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 0.92rem; }
+  </style>
+`;
+
+function renderLandingPage(username: string): string {
   const body = `
-    <div class="card">
-      <a href="/admin/metrics">
-        <span>📊 Métricas</span>
-        <span class="meta">Consultas, canales de origen</span>
+    <div class="narrow">
+      <div class="hello">Hola, ${esc(username)}</div>
+      <a class="nav-btn" href="/admin/metrics">
+        <span class="nav-btn-icon">📊</span>
+        <span>
+          <span class="nav-btn-title">Métricas</span>
+          <span class="nav-btn-sub">Consultas, canales de origen</span>
+        </span>
       </a>
-    </div>
-    <div class="card">
-      <a href="/admin/config">
-        <span>⚙️ Configuración</span>
-        <span class="meta">Números, Drive, Tokko, estilo del agente</span>
+      <a class="nav-btn" href="/admin/config">
+        <span class="nav-btn-icon">⚙️</span>
+        <span>
+          <span class="nav-btn-title">Configuración</span>
+          <span class="nav-btn-sub">Números, Drive, Tokko, estilo del agente</span>
+        </span>
       </a>
+      <form method="POST" action="/admin/logout">
+        <button type="submit" class="logout-btn">Cerrar sesión</button>
+      </form>
     </div>
-    <form method="POST" action="/admin/logout" style="margin-top:20px;">
-      <button type="submit" style="width:auto;padding:8px 16px;font-size:0.85rem;background:none;color:#75758c;border:1px solid #eaeaf3;box-shadow:none;border-radius:8px;cursor:pointer;">Cerrar sesión</button>
-    </form>
+    ${NARROW_PAGE_STYLE}
   `;
   return layoutPageShell("Agente WhatsApp", body, "/admin");
 }
 
 function renderLoginPage(opts: { error: boolean; next: string }): string {
   const body = `
-    <div class="card">
-      <form method="POST" action="/admin/login" style="display:flex;flex-direction:column;gap:12px;">
-        <input type="hidden" name="next" value="${opts.next.replace(/"/g, "&quot;")}">
-        <label style="font-size:0.85rem;font-weight:600;">Contraseña</label>
-        <input type="password" name="password" autofocus style="padding:10px 12px;border:1.5px solid #eaeaf3;border-radius:10px;font-size:0.95rem;">
-        ${opts.error ? '<div style="color:#a31c1c;font-size:0.85rem;">Contraseña incorrecta.</div>' : ""}
-        <button type="submit" style="padding:11px 18px;background:linear-gradient(120deg,#6d5ef8,#5646e0);color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">Entrar</button>
-      </form>
+    <div class="narrow">
+      <div class="narrow-card">
+        <form method="POST" action="/admin/login" class="narrow-form">
+          <input type="hidden" name="next" value="${esc(opts.next)}">
+          <div class="narrow-field">
+            <label for="username">Usuario</label>
+            <input type="text" id="username" name="username" autofocus placeholder="tu nombre">
+          </div>
+          <div class="narrow-field">
+            <label for="password">Contraseña</label>
+            <input type="password" id="password" name="password">
+          </div>
+          ${opts.error ? '<div style="color:#a31c1c;font-size:0.85rem;">Contraseña incorrecta.</div>' : ""}
+          <button type="submit" class="narrow-submit">Entrar</button>
+        </form>
+      </div>
     </div>
+    ${NARROW_PAGE_STYLE}
   `;
   return layoutPageShell("Agente WhatsApp — Ingresar", body, "/admin/login");
 }

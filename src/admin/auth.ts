@@ -3,9 +3,12 @@ import type { Request, Response, NextFunction } from "express";
 import { config } from "../config.js";
 
 /**
- * Login por contraseña con sesión en cookie firmada (HMAC), sin store del
- * lado del servidor — alcanza para un solo panel de administración de una
- * sola inmobiliaria. La contraseña sigue siendo ADMIN_PASSWORD del .env.
+ * Login por usuario+contraseña con sesión en cookie firmada (HMAC), sin
+ * store del lado del servidor — alcanza para el panel de una sola
+ * inmobiliaria. Hoy valida contra una única ADMIN_PASSWORD compartida (no
+ * hay distintos niveles de acceso todavía); el usuario se guarda en la
+ * sesión igual, para no tener que volver a tocar el formato de la cookie
+ * el día que se sumen roles.
  */
 const COOKIE_NAME = "admin_session";
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -22,20 +25,34 @@ function timingSafeStringEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-function createSessionToken(): string {
-  const expiry = Date.now() + SESSION_DURATION_MS;
-  return `${expiry}.${sign(String(expiry))}`;
+interface SessionPayload {
+  username: string;
+  expiry: number;
 }
 
-function isValidSessionToken(token: string | undefined): boolean {
-  if (!token) return false;
-  const dotIndex = token.indexOf(".");
-  if (dotIndex === -1) return false;
-  const expiryStr = token.slice(0, dotIndex);
-  const signature = token.slice(dotIndex + 1);
+function createSessionToken(username: string): string {
+  const expiry = Date.now() + SESSION_DURATION_MS;
+  const usernameB64 = Buffer.from(username, "utf-8").toString("base64url");
+  const payload = `${expiry}.${usernameB64}`;
+  return `${payload}.${sign(payload)}`;
+}
+
+function parseSessionToken(token: string | undefined): SessionPayload | null {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [expiryStr, usernameB64, signature] = parts;
   const expiry = Number(expiryStr);
-  if (!Number.isFinite(expiry) || Date.now() > expiry) return false;
-  return timingSafeStringEqual(signature, sign(expiryStr));
+  if (!Number.isFinite(expiry) || Date.now() > expiry) return null;
+  const payload = `${expiryStr}.${usernameB64}`;
+  if (!timingSafeStringEqual(signature, sign(payload))) return null;
+  let username: string;
+  try {
+    username = Buffer.from(usernameB64, "base64url").toString("utf-8");
+  } catch {
+    return null;
+  }
+  return { username, expiry };
 }
 
 function parseCookies(req: Request): Record<string, string> {
@@ -68,7 +85,7 @@ export function requireAdminAuth(req: Request, res: Response, next: NextFunction
   }
 
   const cookies = parseCookies(req);
-  if (!isValidSessionToken(cookies[COOKIE_NAME])) {
+  if (!parseSessionToken(cookies[COOKIE_NAME])) {
     const nextParam =
       req.originalUrl && req.originalUrl !== "/admin" ? `?next=${encodeURIComponent(req.originalUrl)}` : "";
     res.redirect(`/admin/login${nextParam}`);
@@ -77,12 +94,18 @@ export function requireAdminAuth(req: Request, res: Response, next: NextFunction
   next();
 }
 
+/** Usuario de la sesión actual, o null si no hay una válida. Para mostrar en el panel. */
+export function getSessionUsername(req: Request): string | null {
+  const cookies = parseCookies(req);
+  return parseSessionToken(cookies[COOKIE_NAME])?.username ?? null;
+}
+
 export function checkPassword(password: string): boolean {
   return timingSafeStringEqual(password, config.ADMIN_PASSWORD ?? "");
 }
 
-export function setSessionCookie(res: Response): void {
-  const token = createSessionToken();
+export function setSessionCookie(res: Response, username: string): void {
+  const token = createSessionToken(username || "admin");
   res.setHeader(
     "Set-Cookie",
     `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_DURATION_MS / 1000)}; Path=/admin`,

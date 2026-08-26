@@ -5,6 +5,7 @@ import { sendDocumentByLink } from "../whatsapp/client.js";
 import { logger } from "../logger.js";
 import { getSettings } from "../settings.js";
 import { escalateToHumans } from "./escalation.js";
+import { appendToolUsage } from "./toolUsageLog.js";
 
 export interface AgentContext {
   customerPhone: string;
@@ -189,6 +190,15 @@ export async function executeTool(
   switch (name) {
     case "search_properties": {
       const operation = input.operation as "venta" | "alquiler" | undefined;
+      const roomsMin = input.rooms_min as number | undefined;
+      if (roomsMin !== undefined) {
+        appendToolUsage({
+          ts: Date.now(),
+          phone: ctx.customerPhone,
+          kind: "typology",
+          value: `${roomsMin}+ ambientes`,
+        });
+      }
       const tokkoSettings = getSettings().tokko;
       const operationId =
         operation === "venta"
@@ -242,11 +252,17 @@ export async function executeTool(
         address: d.address ?? d.location?.name,
         url: d.web_url || undefined,
       }));
+      if (summaries.length > 0 && summaries[0].name) {
+        appendToolUsage({ ts: Date.now(), phone: ctx.customerPhone, kind: "development", value: summaries[0].name });
+      }
       return JSON.stringify({ count: summaries.length, developments: summaries });
     }
 
     case "get_development_details": {
       const development = await tokkoClient.getDevelopment(input.development_id as number);
+      if (development.name) {
+        appendToolUsage({ ts: Date.now(), phone: ctx.customerPhone, kind: "development", value: development.name });
+      }
       return JSON.stringify({
         id: development.id,
         name: development.name,
