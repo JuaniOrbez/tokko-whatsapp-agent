@@ -57,7 +57,12 @@ export function requireAdminAuth(req: Request, res: Response, next: NextFunction
       .send("Panel de administración no configurado — falta ADMIN_PASSWORD en el .env del servidor.");
     return;
   }
-  if (PUBLIC_PATHS.has(req.path)) {
+  // req.path acá viene relativo al prefijo "/admin" con el que se montó
+  // este middleware (Express se lo saca) — hay que comparar contra
+  // originalUrl, que sí mantiene el path completo, o esto nunca matchea y
+  // /admin/login termina redirigiendo a sí mismo en loop.
+  const pathname = req.originalUrl.split("?")[0];
+  if (PUBLIC_PATHS.has(pathname)) {
     next();
     return;
   }
