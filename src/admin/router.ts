@@ -9,6 +9,7 @@ import {
 } from "../settings.js";
 import { initiateConversation } from "../agent/orchestrator.js";
 import { renderConversationsList, renderConversationDetail, renderDailySummaryView } from "./conversationsView.js";
+import { renderContactsList } from "./contactsView.js";
 import { renderMetricsView } from "./metricsView.js";
 import { requireAdminAuth, checkPassword, setSessionCookie, clearSessionCookie, getSessionUsername } from "./auth.js";
 import { pageShell as layoutPageShell } from "./layout.js";
@@ -81,6 +82,10 @@ adminRouter.get("/admin/contact", (req: Request, res: Response) => {
 
 adminRouter.get("/admin/conversations", (_req: Request, res: Response) => {
   res.type("html").send(renderConversationsList());
+});
+
+adminRouter.get("/admin/contacts", (_req: Request, res: Response) => {
+  res.type("html").send(renderContactsList());
 });
 
 adminRouter.get("/admin/conversations/:phone", (req: Request, res: Response) => {
@@ -298,6 +303,13 @@ function renderLandingPage(username: string): string {
           <span>
             <span class="tile-title">Ver conversaciones</span>
             <span class="tile-sub">Historial y diagrama por cliente</span>
+          </span>
+        </a>
+        <a class="tile" href="/admin/contacts">
+          <span class="tile-icon">📇</span>
+          <span>
+            <span class="tile-title">Contactos</span>
+            <span class="tile-sub">Etapas para aplicar a mano en Tokko</span>
           </span>
         </a>
         <a class="tile" href="/admin/daily-summary">

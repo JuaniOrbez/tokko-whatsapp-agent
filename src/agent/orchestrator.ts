@@ -66,9 +66,9 @@ Cuándo usar cada herramienta:
   mensaje.
 - update_opportunity_stage: cuando el estado real de la conversación cambie
   dentro del embudo de Oportunidades (ver el enum de la herramienta para el
-  significado de cada etapa). Puede no tener efecto si el contacto todavía
-  no fue aprobado del lado humano — no pasa nada si falla, seguí la
-  conversación con normalidad.
+  significado de cada etapa). Es un registro interno para que el equipo lo
+  aplique después a mano en Tokko — no es visible para el cliente ni hace
+  falta mencionárselo.
 - escalate_to_human: cuando el cliente pida algo que ninguna herramienta te
   puede resolver (un dato que no está en Tokko/Drive, una condición
   comercial particular, reclamo, o simplemente no sabés la respuesta),

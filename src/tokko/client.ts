@@ -1,6 +1,4 @@
 import { config } from "../config.js";
-import { getSettings } from "../settings.js";
-import { logger } from "../logger.js";
 import type {
   TokkoContact,
   TokkoDevelopment,
@@ -22,14 +20,15 @@ import type {
  *   determinar, por eso `searchProperties` filtra en el servidor Node sobre
  *   el listado de `/property/`.
  * - **Escribir directo sobre `/contact/{id}/` está bloqueado**: PATCH
- *   devuelve `405 Method Not Allowed` con header `Allow: GET` (confirmado
- *   en vivo el 2026-08-26) — no es un tema de permisos de la API key (Tokko
- *   confirmó que es la misma key para lectura y escritura), la ruta en sí
- *   no tiene el método habilitado a nivel HTTP, probablemente en el
- *   Cloudflare/CDN delante de www.tokkobroker.com. Por eso
- *   `updateContactStage` va a seguir fallando hasta que Tokko habilite el
- *   método ahí — lo dejamos igual por si lo habilitan más adelante, pero no
- *   confíes en que funcione hoy.
+ *   devuelve `405 Method Not Allowed` con header `Allow: GET` (confirmado en
+ *   vivo el 2026-08-26) — no es un tema de permisos de la API key (Tokko
+ *   confirmó que es la misma key para lectura y escritura). Soporte de
+ *   Tokko lo terminó de confirmar: su API está pensada para mostrar
+ *   inventario y recibir consultas nuevas, no funciona como CRM
+ *   bidireccional — no hay forma de editar un contacto existente por API,
+ *   punto. Por eso el cambio de etapa del embudo de Oportunidades no se
+ *   escribe acá — queda anotado en un registro aparte para que el equipo lo
+ *   aplique a mano en Tokko (ver src/agent/stageLog.ts y /admin/contacts).
  * - **`POST /webcontact/` sí funciona** (devuelve 201) — es el endpoint que
  *   usan los portales externos (Zonaprop, etc.) para cargar leads. OJO: no
  *   crea un Contacto directamente, crea una "Consulta" en la bandeja
@@ -41,8 +40,6 @@ import type {
 const ENDPOINTS = {
   propertyList: "/property/",
   propertyDetail: (id: number | string) => `/property/${id}/`,
-  contactList: "/contact/",
-  contactDetail: (id: number | string) => `/contact/${id}/`,
   webContact: "/webcontact/",
   developmentList: "/development/",
   developmentDetail: (id: number | string) => `/development/${id}/`,
@@ -244,26 +241,6 @@ class TokkoClient {
         text: input.text,
         tags: input.tags ?? ["WhatsApp"],
       },
-    });
-  }
-
-  /**
-   * Mueve al contacto a la etapa indicada del workflow de Oportunidades,
-   * actualizando su campo `opportunity_status`. `stageKey` es la `key` de
-   * una etapa configurada en /admin (ver src/settings.ts#TokkoStage) — la
-   * lista de etapas es libre, no un enum fijo.
-   * NO FUNCIONA hoy: /contact/{id}/ devuelve 405 para PATCH (ver comentario
-   * arriba del archivo) — queda por si Tokko habilita el método más
-   * adelante.
-   */
-  async updateContactStage(contactId: number, stageKey: string): Promise<void> {
-    const stageId = getSettings().tokko.stages.find((s) => s.key === stageKey)?.tokkoId;
-    if (!stageId) {
-      logger.warn("tokko.stage_not_configured", { stageKey });
-      return;
-    }
-    await this.request("PATCH", ENDPOINTS.contactDetail(contactId), {
-      body: { opportunity_status: stageId },
     });
   }
 }

@@ -9,14 +9,14 @@ import { escalateToHumans } from "./escalation.js";
 import { appendToolUsage } from "./toolUsageLog.js";
 import { getAvailableSlots, bookVisit, rescheduleVisit, findMatchingReps } from "../calendar/client.js";
 import { storeIcs } from "../calendar/icsStore.js";
+import { appendStageLog } from "./stageLog.js";
 
 export interface AgentContext {
   customerPhone: string;
   customerName: string;
   // id real solo si el contacto YA existía en Tokko (encontrado por
   // teléfono). Un contacto nuevo no tiene id todavía: queda como "Consulta"
-  // pendiente de aprobación manual en Tokko (ver orchestrator.ts) — en ese
-  // caso update_opportunity_stage no tiene nada sobre lo cual actuar.
+  // pendiente de aprobación manual en Tokko (ver orchestrator.ts).
   contactId: number | null;
 }
 
@@ -33,8 +33,11 @@ function buildUpdateStageTool(): Anthropic.Tool {
   return {
     name: "update_opportunity_stage",
     description:
-      "Actualiza la etapa del contacto en el workflow de Oportunidades de Tokko. Usala cuando " +
-      "la conversación deje claro un cambio real de etapa — no la uses en cada mensaje.",
+      "Anota qué etapa del workflow de Oportunidades le corresponde al contacto actual, según cómo " +
+      "va la conversación — Tokko no permite escribir esto por API (no es un tema de permisos, " +
+      "confirmado con ellos: su API no es bidireccional), así que queda registrado para que alguien " +
+      "del equipo lo revise en /admin/contacts y lo aplique a mano en Tokko. Usala cuando la " +
+      "conversación deje claro un cambio real de etapa — no la uses en cada mensaje.",
     input_schema: {
       type: "object",
       properties: {
@@ -607,16 +610,19 @@ export async function executeTool(
     }
 
     case "update_opportunity_stage": {
-      if (ctx.contactId === null) {
-        return JSON.stringify({
-          updated: false,
-          reason: "Todavía no hay un contacto confirmado en Tokko (la consulta está pendiente de aprobación).",
-        });
-      }
       const stage = input.stage as string;
-      await tokkoClient.updateContactStage(ctx.contactId, stage);
-      logger.info("agent.stage_updated", { contactId: ctx.contactId, stage, reason: input.reason });
-      return JSON.stringify({ updated: true, stage });
+      const reason = (input.reason as string | undefined)?.trim();
+      const stageLabel = getSettings().tokko.stages.find((s) => s.key === stage)?.label ?? stage;
+      appendStageLog({
+        ts: Date.now(),
+        phone: ctx.customerPhone,
+        name: ctx.customerName,
+        stageKey: stage,
+        stageLabel,
+        reason,
+      });
+      logger.info("agent.stage_logged", { customerPhone: ctx.customerPhone, stage, reason });
+      return JSON.stringify({ logged: true, stage });
     }
 
     case "save_lead_notes": {

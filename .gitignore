@@ -6,3 +6,4 @@ dist/
 google-service-account.json
 data/settings.json
 data/conversations.jsonl
+data/stages.jsonl

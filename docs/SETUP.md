@@ -122,20 +122,17 @@ de Meta). Ahí se actualiza `TWILIO_WHATSAPP_FROM` con el número real.
      contacto directo — no está disponible para integraciones custom).
    - `PATCH`/`POST` directo contra `/contact/{id}/` (para notas o cambiar
      `opportunity_status` de un contacto ya existente) **está bloqueado**:
-     devuelve el texto plano `GET` en vez de JSON. Parece un firewall/CDN
-     delante de `www.tokkobroker.com` que solo deja pasar `GET` en esa
-     ruta — no es (solo) un tema de permisos de la key, porque el mismo
-     bloqueo aparece tanto en `/contact/{id}/` como en `POST /contact/`
-     (creación directa), mientras que `/webcontact/` sí pasa. Si en algún
-     momento Tokko habilita esto, `updateContactStage` en
-     `src/tokko/client.ts` ya está listo para funcionar sin cambios — probá
-     con:
-     ```bash
-     curl -i -X PATCH "https://www.tokkobroker.com/api/v1/contact/ID_DE_UN_CONTACTO/?key=TU_API_KEY&format=json" \
-       -H "Content-Type: application/json" -d '{"opportunity_status": 344781}'
-     ```
-     Si el `HTTP/2` de la respuesta ya no es `201`/`GET` como body sino el
-     contacto actualizado, avisale a quien mantenga este repo.
+     devuelve `405 Method Not Allowed` con header `Allow: GET` (confirmado en
+     vivo el 2026-08-26). No es un tema de permisos de la key — soporte de
+     Tokko lo confirmó directamente por chat: **la API no es bidireccional**,
+     sirve para mostrar inventario y recibir consultas nuevas, pero no para
+     editar un contacto existente. No hay forma de escribir esto por API,
+     punto — no queda nada pendiente de reintentar acá.
+     Por eso este agente no intenta escribirlo: cuando la charla deja claro
+     un cambio de etapa, queda anotado en un registro propio (ver
+     `src/agent/stageLog.ts`) que se ve en **`/admin/contacts`** — ahí
+     alguien del equipo revisa cada contacto con su etapa sugerida y la
+     aplica a mano en Tokko.
 5. **IDs de operación** (venta/alquiler): confirmado en una cuenta real que
    **Venta = `operation_id: 1`**. Para Alquiler, buscá en el JSON de
    `/property/` una propiedad publicada en alquiler y fijate su
@@ -152,7 +149,9 @@ de Meta). Ahí se actualiza `TWILIO_WHATSAPP_FROM` con el número real.
    Para conseguir el ID real de cada etapa: entrá a un contacto de prueba
    en el panel de Tokko, cambiale el estado, y pedí
    `/contact/{id}/?key=...&format=json` para leer el `id` de
-   `opportunity_status` en cada paso.
+   `opportunity_status` en cada paso. El **ID Tokko** solo sirve como
+   referencia para quien aplica el cambio a mano (ver punto anterior) — no
+   se usa para escribir nada por API.
 
 ## 3. Google Drive (cuenta de servicio)
 
@@ -406,9 +405,24 @@ edita desde el navegador, en caliente, sin tocar la terminal:
      reiniciar nada.
    - **Ver conversaciones** (`/admin/conversations`): historial y mapa de
      cada charla — ver más abajo.
+   - **Contactos** (`/admin/contacts`): todos los clientes que escribieron,
+     con la etapa de Oportunidades que el agente detectó en la charla — ver
+     más abajo.
    - **Resumen de hoy** (`/admin/daily-summary`): ver más abajo.
    - **Contactar a un cliente** (`/admin/contact`): iniciar una
      conversación ahora — ver "Iniciar una conversación" más abajo.
+
+### Contactos (`/admin/contacts`)
+
+Como Tokko no permite actualizar la etapa de un contacto por API (ver
+sección 1, punto 4), el agente anota localmente qué etapa le corresponde a
+cada cliente según cómo viene la charla — no lo escribe en Tokko, solo lo
+registra. Esta pantalla lista a todos los que escribieron, con la última
+etapa anotada (y el motivo, si lo hay) junto al teléfono y el último
+mensaje. Es la lista para que alguien del equipo la revise de tanto en
+tanto y aplique cada cambio a mano en la cuenta de Tokko — tocando un
+contacto se abre su conversación completa por si hace falta más contexto
+antes de aplicar el cambio.
 
 ### Métricas (`/admin/metrics`)
 
