@@ -502,6 +502,7 @@ export async function executeTool(
           try {
             const icsId = storeIcs(result.icsContent);
             const icsUrl = `${new URL(config.PUBLIC_WEBHOOK_URL).origin}/ics/${icsId}`;
+            logger.info("agent.visit_ics_url", { icsUrl });
             await sendDocumentByLink(ctx.customerPhone, icsUrl, "visita.ics", "📅 Acá tenés el evento para agregarlo a tu calendario.");
             icsSent = true;
           } catch (error) {
