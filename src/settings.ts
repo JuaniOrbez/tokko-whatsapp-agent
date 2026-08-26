@@ -13,6 +13,16 @@ export interface TokkoStage {
   tokkoId?: number;
 }
 
+export interface EscalationContact {
+  phone: string;
+  // Motivo/categoría de este contacto (ej. "Consultas técnicas"), texto
+  // libre — el agente elige a cuál avisar según el motivo de la consulta
+  // (ver tools.ts#buildEscalateToHumanTool, que arma el enum de la
+  // herramienta a partir de los motivos cargados acá). Vacío = comodín:
+  // ese número recibe lo que no matchee ningún motivo específico.
+  reason: string;
+}
+
 export interface CommunicationStyleOverride {
   // Nombre (o parte del nombre) de una propiedad/emprendimiento — el
   // agente decide él mismo si la conversación actual coincide, no hay
@@ -31,9 +41,9 @@ export interface CommunicationStyleOverride {
  */
 export interface AppSettings {
   // Números de WhatsApp (E.164) que reciben los avisos de escalate_to_human
-  // / share_file. Ver docs/SETUP.md — no puede ser un grupo, la API de
-  // WhatsApp no lo permite.
-  escalationNumbers: string[];
+  // / share_file, cada uno con su motivo. Ver docs/SETUP.md — no puede ser
+  // un grupo, la API de WhatsApp no lo permite.
+  escalationContacts: EscalationContact[];
   // Nombre del archivo en Drive que mapea nombre de propiedad -> link de
   // Zonaprop (ver findZonapropLink en drive/client.ts).
   zonapropLinksFileName: string;
@@ -91,7 +101,7 @@ function defaultSettings(): AppSettings {
   ];
 
   return {
-    escalationNumbers: config.HUMAN_ESCALATION_WHATSAPP_NUMBERS ?? [],
+    escalationContacts: (config.HUMAN_ESCALATION_WHATSAPP_NUMBERS ?? []).map((phone) => ({ phone, reason: "" })),
     zonapropLinksFileName: "Links Zonaprop",
     driveFolderId: undefined,
     tokko: {
@@ -112,9 +122,15 @@ function defaultSettings(): AppSettings {
 // communicationStyle) no rompe en vez de tirar undefined más adelante.
 function normalize(loaded: Partial<AppSettings>): AppSettings {
   const defaults = defaultSettings();
+  // Migración: settings.json de antes de agregar el motivo por contacto
+  // tenía escalationNumbers como string[] plano.
+  const legacyNumbers = (loaded as unknown as { escalationNumbers?: string[] }).escalationNumbers;
+  const escalationContacts =
+    loaded.escalationContacts ?? legacyNumbers?.map((phone) => ({ phone, reason: "" })) ?? defaults.escalationContacts;
   return {
     ...defaults,
     ...loaded,
+    escalationContacts,
     tokko: { ...defaults.tokko, ...loaded.tokko },
     communicationStyle: { ...defaults.communicationStyle, ...loaded.communicationStyle },
   };

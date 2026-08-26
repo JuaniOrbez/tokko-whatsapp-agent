@@ -208,15 +208,23 @@ alguien del equipo por WhatsApp cuando no puede resolver una consulta. Es
 un mensaje saliente más, así que usa el mismo `TWILIO_WHATSAPP_FROM` que ya
 configuraste.
 
-1. En **`/admin/config`** (sección "Escalamiento a humano"), cargá el/los
+1. En **`/admin/config`** (sección "Números de contacto"), cargá el/los
    número/s del equipo en formato E.164 (ej. `+5491122334455`), uno por
-   línea.
-2. **No es un grupo de WhatsApp**: la WhatsApp Business API (ni vía Twilio
+   fila, con un **motivo** opcional en la segunda columna (ej. "Consultas
+   técnicas", "Consultas generales").
+2. El motivo le sirve al agente para elegir a quién avisar: cuando escala,
+   además de la pregunta del cliente elige una categoría (armada
+   dinámicamente a partir de los motivos que hayas cargado, igual que las
+   etapas de Tokko) y avisa solo a los contactos con ese motivo exacto. Si
+   dejás el motivo vacío, ese número recibe lo que no matchee ninguna
+   categoría específica — y si ningún contacto tiene el motivo elegido (o
+   directamente no cargaste motivos), avisa a todos, para que la consulta
+   nunca quede sin nadie enterado.
+3. **No es un grupo de WhatsApp**: la WhatsApp Business API (ni vía Twilio
    ni directo con Meta) permite mandar mensajes a un grupo por API — solo a
-   números individuales, uno por uno. Si querés que llegue a varias
-   personas, agregalas todas separadas por coma y cada una recibe el
-   mensaje por separado.
-3. **Mientras estés en el sandbox de Twilio**: cada número que quieras que
+   números individuales, uno por uno. Cada fila de la lista es un número
+   individual, no una lista separada por coma.
+4. **Mientras estés en el sandbox de Twilio**: cada número que quieras que
    reciba estos avisos tiene que sumarse al sandbox igual que hiciste vos
    (mandarle `join <palabra-clave>` al número del sandbox desde ese
    WhatsApp) — si no, Twilio no le va a poder mandar el mensaje. Esto deja
@@ -259,14 +267,22 @@ edita desde el navegador, en caliente, sin tocar la terminal:
    libre — hoy no hay distintos niveles de acceso, todos entran con la
    misma `ADMIN_PASSWORD`, pero queda guardado en la sesión para cuando se
    sumen roles más adelante.
-3. Desde ahí hay dos botones: **Métricas** (consultas por día, canal de
-   origen, emprendimiento y tipología — ver más abajo) y **Configuración**,
-   que es donde se edita todo lo que antes había que tocar a mano en
-   `.env` y reiniciar el servidor: los números de escalamiento, la carpeta
-   y el archivo de links de Zonaprop en Drive, y los IDs de Tokko
-   (operación venta/alquiler y las etapas del workflow de Oportunidades —
-   podés agregar, sacar o renombrar etapas libremente, no es una lista
-   fija). Al guardar, los cambios aplican al toque, sin reiniciar nada.
+3. Desde ahí hay varios botones (el menú principal, `/admin`, está pensado
+   para poder ir sumando más):
+   - **Métricas** (`/admin/metrics`): consultas por día, canal de origen,
+     emprendimiento y tipología — ver más abajo.
+   - **Configuración** (`/admin/config`): donde se edita todo lo que antes
+     había que tocar a mano en `.env` y reiniciar el servidor — los
+     números de escalamiento (con su motivo), la carpeta y el archivo de
+     links de Zonaprop en Drive, y los IDs de Tokko (operación
+     venta/alquiler y las etapas del workflow de Oportunidades — podés
+     agregar, sacar o renombrar etapas libremente, no es una lista fija).
+     Al guardar, los cambios aplican al toque, sin reiniciar nada.
+   - **Ver conversaciones** (`/admin/conversations`): historial y mapa de
+     cada charla — ver más abajo.
+   - **Resumen de hoy** (`/admin/daily-summary`): ver más abajo.
+   - **Contactar a un cliente** (`/admin/contact`): iniciar una
+     conversación ahora — ver "Iniciar una conversación" más abajo.
 
 ### Métricas (`/admin/metrics`)
 
@@ -322,13 +338,14 @@ no inició la conversación). Para habilitar esto:
    apruebe/funcione mientras sigas en el sandbox de Twilio — Meta exige un
    número de WhatsApp productivo verificado para este tipo de template.
 2. Una vez aprobado, copiá el **Content SID** (`HX...`) y pegalo en
-   `/admin`, sección "Iniciar conversación", junto con el texto exacto del
-   template (con `{{1}}`/`{{2}}` en el mismo orden — Twilio no devuelve el
-   texto ya renderizado al mandar un template, así que este texto es lo
-   que usa el agente para "recordar" qué le dijo al cliente).
-3. Con eso cargado, en la sección "Contactar a un cliente ahora" cualquiera
-   con acceso a `/admin` puede cargar el número, nombre y motivo de un
-   cliente, y el agente le manda el mensaje y sigue la conversación
+   `/admin/config`, sección "Iniciar conversación", junto con el texto
+   exacto del template (con `{{1}}`/`{{2}}` en el mismo orden — Twilio no
+   devuelve el texto ya renderizado al mandar un template, así que este
+   texto es lo que usa el agente para "recordar" qué le dijo al cliente).
+3. Con eso cargado, desde el botón "Contactar a un cliente" del menú
+   principal (`/admin/contact`) cualquiera con acceso al panel puede cargar
+   el número, nombre y motivo de un cliente, y el agente le manda el
+   mensaje y sigue la conversación
    normalmente cuando responda.
 
 ### Resumen diario

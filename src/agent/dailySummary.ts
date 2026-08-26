@@ -81,7 +81,7 @@ export async function generateAndSendDailySummary(): Promise<void> {
     return;
   }
 
-  const numbers = getSettings().escalationNumbers;
+  const numbers = getSettings().escalationContacts.map((c) => c.phone);
   if (numbers.length === 0) {
     logger.warn("daily_summary.no_recipients");
     return;

@@ -158,7 +158,17 @@ const STATIC_TOOLS_AFTER_STAGE: Anthropic.Tool[] = [
       required: ["note"],
     },
   },
-  {
+];
+
+/**
+ * Arma la herramienta escalate_to_human a partir de los motivos cargados en
+ * los contactos de escalamiento (/admin) — igual que buildUpdateStageTool,
+ * el enum de "category" no puede ser estático porque esos motivos son
+ * texto libre configurable.
+ */
+function buildEscalateToHumanTool(): Anthropic.Tool {
+  const categories = [...new Set(getSettings().escalationContacts.map((c) => c.reason).filter(Boolean))];
+  return {
     name: "escalate_to_human",
     description:
       "Avisa por WhatsApp a un agente humano del equipo que este cliente necesita ayuda con algo " +
@@ -172,14 +182,27 @@ const STATIC_TOOLS_AFTER_STAGE: Anthropic.Tool[] = [
           type: "string",
           description: "La pregunta o pedido concreto del cliente que necesita revisión humana.",
         },
+        category: {
+          type: "string",
+          ...(categories.length > 0 ? { enum: categories } : {}),
+          description:
+            categories.length > 0
+              ? "A qué tipo de consulta corresponde, para avisarle al contacto correcto: " + categories.join(", ")
+              : "No hay motivos configurados todavía (ver /admin) — se avisa a todos los contactos.",
+        },
       },
       required: ["question"],
     },
-  },
-];
+  };
+}
 
 export function getAgentTools(): Anthropic.Tool[] {
-  return [...STATIC_TOOLS_BEFORE_STAGE, buildUpdateStageTool(), ...STATIC_TOOLS_AFTER_STAGE];
+  return [
+    ...STATIC_TOOLS_BEFORE_STAGE,
+    buildUpdateStageTool(),
+    ...STATIC_TOOLS_AFTER_STAGE,
+    buildEscalateToHumanTool(),
+  ];
 }
 
 export async function executeTool(
@@ -371,19 +394,21 @@ export async function executeTool(
 
     case "escalate_to_human": {
       const question = input.question as string;
+      const category = input.category as string | undefined;
       const escalated = await escalateToHumans({
         customerPhone: ctx.customerPhone,
         customerName: ctx.customerName,
         question,
+        category,
       });
       if (!escalated) {
         logger.warn("agent.escalation_not_configured", { customerPhone: ctx.customerPhone });
         return JSON.stringify({
           escalated: false,
-          reason: "No hay ningún número de escalamiento configurado (HUMAN_ESCALATION_WHATSAPP_NUMBERS).",
+          reason: "No hay ningún contacto de escalamiento configurado (ver /admin).",
         });
       }
-      logger.info("agent.escalated_to_human", { customerPhone: ctx.customerPhone, question });
+      logger.info("agent.escalated_to_human", { customerPhone: ctx.customerPhone, question, category });
       return JSON.stringify({ escalated: true });
     }
 

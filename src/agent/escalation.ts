@@ -29,25 +29,34 @@ function normalizePhone(phone: string): string {
 }
 
 export function isHumanEscalationNumber(phone: string): boolean {
-  const numbers = getSettings().escalationNumbers;
+  const contacts = getSettings().escalationContacts;
   const normalized = normalizePhone(phone);
-  return numbers.some((n) => normalizePhone(n) === normalized);
+  return contacts.some((c) => normalizePhone(c.phone) === normalized);
 }
 
 /**
- * Le avisa a los números de HUMAN_ESCALATION_WHATSAPP_NUMBERS y deja
- * registrada la consulta para poder reenviarle la respuesta al cliente
- * cuando alguno conteste (ver resolveHumanReply). Devuelve false si no hay
- * ningún número configurado.
+ * Le avisa a los contactos de escalamiento (ver /admin) y deja registrada
+ * la consulta para poder reenviarle la respuesta al cliente cuando alguno
+ * conteste (ver resolveHumanReply). Devuelve false si no hay ningún
+ * contacto configurado.
+ *
+ * Si se pasa `category`, avisa solo a los contactos cuyo motivo coincide
+ * exactamente (ver tools.ts#buildEscalateToHumanTool) — si ninguno
+ * coincide, o no se pasó categoría, avisa a todos, para que la consulta
+ * nunca quede sin nadie enterado.
  */
 export async function escalateToHumans(input: {
   customerPhone: string;
   customerName: string;
   question: string;
   reason?: string;
+  category?: string;
 }): Promise<boolean> {
-  const numbers = getSettings().escalationNumbers;
-  if (numbers.length === 0) return false;
+  const contacts = getSettings().escalationContacts;
+  if (contacts.length === 0) return false;
+
+  const matched = input.category ? contacts.filter((c) => c.reason === input.category) : [];
+  const targets = matched.length > 0 ? matched : contacts;
 
   const alertText =
     `🔔 Consulta necesita revisión humana\n` +
@@ -58,14 +67,14 @@ export async function escalateToHumans(input: {
 
   cleanup();
   await Promise.all(
-    numbers.map(async (number) => {
-      const sid = await sendText(number, alertText);
+    targets.map(async (contact) => {
+      const sid = await sendText(contact.phone, alertText);
       pendingBySid.set(sid, {
         customerPhone: input.customerPhone,
         question: input.question,
         createdAt: Date.now(),
       });
-      lastPendingByHuman.set(number, sid);
+      lastPendingByHuman.set(contact.phone, sid);
     }),
   );
   return true;

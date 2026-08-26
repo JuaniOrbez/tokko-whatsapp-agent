@@ -5,6 +5,7 @@ import {
   type AppSettings,
   type TokkoStage,
   type CommunicationStyleOverride,
+  type EscalationContact,
 } from "../settings.js";
 import { initiateConversation } from "../agent/orchestrator.js";
 import { renderConversationsList, renderConversationDetail, renderDailySummaryView } from "./conversationsView.js";
@@ -69,9 +70,13 @@ adminRouter.get("/admin/metrics", (req: Request, res: Response) => {
 
 adminRouter.get("/admin/config", (req: Request, res: Response) => {
   const saved = req.query.saved === "1";
+  res.type("html").send(renderPage(getSettings(), { saved }));
+});
+
+adminRouter.get("/admin/contact", (req: Request, res: Response) => {
   const started = req.query.started === "1";
   const startError = typeof req.query.startError === "string" ? req.query.startError : undefined;
-  res.type("html").send(renderPage(getSettings(), { saved, started, startError }));
+  res.type("html").send(renderContactPage({ started, startError }));
 });
 
 adminRouter.get("/admin/conversations", (_req: Request, res: Response) => {
@@ -108,9 +113,11 @@ function toArray(value: unknown): string[] {
 adminRouter.post("/admin/config", (req: Request, res: Response) => {
   const body = req.body as Record<string, unknown>;
 
-  const escalationNumbers = toArray(body.escalationNumber)
-    .map((n) => n.trim())
-    .filter(Boolean);
+  const escalationPhones = toArray(body.escalationPhone);
+  const escalationReasons = toArray(body.escalationReason);
+  const escalationContacts: EscalationContact[] = escalationPhones
+    .map((phone, i) => ({ phone: phone.trim(), reason: (escalationReasons[i] ?? "").trim() }))
+    .filter((c) => c.phone !== "");
 
   const toNumberOrUndefined = (v: string | undefined): number | undefined => {
     if (!v || v.trim() === "") return undefined;
@@ -136,7 +143,7 @@ adminRouter.post("/admin/config", (req: Request, res: Response) => {
     .filter((o) => o.match !== "" && o.style !== "");
 
   const settings: AppSettings = {
-    escalationNumbers,
+    escalationContacts,
     zonapropLinksFileName: String(body.zonapropLinksFileName ?? "").trim() || "Links Zonaprop",
     driveFolderId: String(body.driveFolderId ?? "").trim() || undefined,
     tokko: {
@@ -165,21 +172,21 @@ adminRouter.post("/admin/start-conversation", (req: Request, res: Response) => {
   const reason = (body.startReason ?? "").trim();
 
   if (!phone || !customerName || !reason) {
-    res.redirect("/admin/config?startError=" + encodeURIComponent("Completá número, nombre y motivo."));
+    res.redirect("/admin/contact?startError=" + encodeURIComponent("Completá número, nombre y motivo."));
     return;
   }
 
   initiateConversation({ phone, customerName, reason })
     .then((result) => {
       if (result.ok) {
-        res.redirect("/admin/config?started=1");
+        res.redirect("/admin/contact?started=1");
       } else {
-        res.redirect("/admin/config?startError=" + encodeURIComponent(result.error ?? "Error desconocido."));
+        res.redirect("/admin/contact?startError=" + encodeURIComponent(result.error ?? "Error desconocido."));
       }
     })
     .catch((error) => {
       logger.error("admin.start_conversation_failed", { error: String(error) });
-      res.redirect("/admin/config?startError=" + encodeURIComponent(String(error)));
+      res.redirect("/admin/contact?startError=" + encodeURIComponent(String(error)));
     });
 });
 
@@ -209,10 +216,11 @@ function renderStageRow(stage: Partial<TokkoStage>): string {
               </div>`;
 }
 
-function renderNumberRow(value: string): string {
+function renderNumberRow(contact: Partial<EscalationContact>): string {
   return `
             <div class="number-row">
-              <input type="text" name="escalationNumber" value="${esc(value)}" placeholder="+5491122334455">
+              <input type="text" name="escalationPhone" value="${esc(contact.phone)}" placeholder="+5491122334455">
+              <input type="text" name="escalationReason" value="${esc(contact.reason)}" placeholder="Motivo (opcional, ej. Consultas técnicas)">
             </div>`;
 }
 
@@ -277,6 +285,13 @@ function renderLandingPage(username: string): string {
             <span class="tile-sub">Actividad del día hasta ahora</span>
           </span>
         </a>
+        <a class="tile" href="/admin/contact">
+          <span class="tile-icon">📞</span>
+          <span>
+            <span class="tile-title">Contactar a un cliente</span>
+            <span class="tile-sub">Iniciar una conversación ahora</span>
+          </span>
+        </a>
       </div>
       <form method="POST" action="/admin/logout">
         <button type="submit" class="logout-btn">Cerrar sesión</button>
@@ -311,22 +326,55 @@ function renderLoginPage(opts: { error: boolean; next: string }): string {
   return layoutPageShell("Agente WhatsApp — Ingresar", body, "/admin/login");
 }
 
+function renderContactPage(opts: { started: boolean; startError?: string }): string {
+  const { started, startError } = opts;
+  const body = `
+    <div class="narrow">
+      ${started ? '<div class="banner">✓ Conversación iniciada — se mandó el template por WhatsApp.</div>' : ""}
+      ${startError ? `<div class="banner banner-error">✕ No se pudo iniciar la conversación: ${esc(startError)}</div>` : ""}
+      <div class="narrow-card">
+        <form method="POST" action="/admin/start-conversation" class="narrow-form">
+          <div class="narrow-field">
+            <label for="startPhone">Número de WhatsApp del cliente</label>
+            <input type="text" id="startPhone" name="startPhone" placeholder="+5491122334455">
+          </div>
+          <div class="narrow-field">
+            <label for="startName">Nombre del cliente</label>
+            <input type="text" id="startName" name="startName" placeholder="Juan">
+          </div>
+          <div class="narrow-field">
+            <label for="startReason">¿Qué está buscando / motivo del contacto?</label>
+            <input type="text" id="startReason" name="startReason" placeholder="un depto de 2 ambientes en Núñez">
+          </div>
+          <button type="submit" class="narrow-submit">Iniciar conversación</button>
+        </form>
+      </div>
+      <div class="hint">Requiere tener cargado el Content SID en "Configuración → Iniciar conversación", y que el template ya esté aprobado por Meta.</div>
+    </div>
+    ${NARROW_PAGE_STYLE}
+    <style>
+      .narrow .banner { background: #e9fbf4; border: 1px solid #9be8ce; color: #0d7a5a; padding: 11px 16px; border-radius: 10px; font-size: 0.88rem; font-weight: 500; }
+      .narrow .banner-error { background: #fdecec; border-color: #f3a9a9; color: #a31c1c; }
+      .narrow .hint { font-size: 0.8rem; color: #75758c; line-height: 1.5; text-align: center; }
+    </style>
+  `;
+  return layoutPageShell("Contactar a un cliente", body, "/admin");
+}
+
 interface PageNotices {
   saved: boolean;
-  started: boolean;
-  startError?: string;
 }
 
 function renderPage(settings: AppSettings, notices: PageNotices): string {
-  const { saved, started, startError } = notices;
+  const { saved } = notices;
   const stageRows = [
     ...settings.tokko.stages.map(renderStageRow),
     ...Array.from({ length: EXTRA_BLANK_STAGE_ROWS }, () => renderStageRow({})),
   ].join("\n");
 
   const numberRows = [
-    ...settings.escalationNumbers.map(renderNumberRow),
-    renderNumberRow(""),
+    ...settings.escalationContacts.map(renderNumberRow),
+    renderNumberRow({}),
   ].join("\n");
 
   const overrideRows = [
@@ -425,6 +473,8 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 16px; }
   @media (max-width: 480px) { .stages { grid-template-columns: 1fr; } }
   .number-rows { display: flex; flex-direction: column; gap: 9px; margin-bottom: 4px; }
+  .number-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
+  @media (max-width: 480px) { .number-row { grid-template-columns: 1fr; } }
   .override-rows { display: flex; flex-direction: column; gap: 9px; margin-bottom: 4px; }
   .override-row { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
   @media (max-width: 480px) { .override-row { grid-template-columns: 1fr; } }
@@ -464,8 +514,6 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   </header>
   <main>
     ${saved ? '<div class="banner">✓ Guardado correctamente.</div>' : ""}
-    ${started ? '<div class="banner">✓ Conversación iniciada — se mandó el template por WhatsApp.</div>' : ""}
-    ${startError ? `<div class="banner banner-error">✕ No se pudo iniciar la conversación: ${esc(startError)}</div>` : ""}
     <form method="POST" action="/admin/config">
 
       <details class="section" open>
@@ -477,7 +525,7 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
               ${numberRows}
             </div>
             <button type="button" class="add-row-btn" id="addNumberRowBtn">+ Agregar número</button>
-            <div class="hint">No puede ser un grupo de WhatsApp (la API no lo permite) — cada fila es un número individual. Mientras estés en el sandbox de Twilio, cada uno tiene que sumarse mandándole "join &lt;palabra-clave&gt;" al número del sandbox.</div>
+            <div class="hint">El motivo es opcional y le sirve al agente para elegir a quién avisar según el tipo de consulta (ej. "Consultas técnicas" vs "Consultas generales") — si lo dejás vacío, ese número recibe lo que no matchee ningún motivo específico. No puede ser un grupo de WhatsApp (la API no lo permite) — cada fila es un número individual. Mientras estés en el sandbox de Twilio, cada uno tiene que sumarse mandándole "join &lt;palabra-clave&gt;" al número del sandbox.</div>
           </div>
         </div>
       </details>
@@ -567,26 +615,6 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
         </div>
       </details>
 
-      <details class="section" id="startConversationSection">
-        <summary><span class="icon">💬</span> Contactar a un cliente ahora<span class="chevron">›</span></summary>
-        <div class="section-body">
-          <div class="field">
-            <label for="startPhone">Número de WhatsApp del cliente</label>
-            <input type="text" id="startPhone" name="startPhone" placeholder="+5491122334455">
-          </div>
-          <div class="field">
-            <label for="startName">Nombre del cliente</label>
-            <input type="text" id="startName" name="startName" placeholder="Juan">
-          </div>
-          <div class="field">
-            <label for="startReason">¿Qué está buscando / motivo del contacto?</label>
-            <input type="text" id="startReason" name="startReason" placeholder="un depto de 2 ambientes en Núñez">
-          </div>
-          <button type="submit" formaction="/admin/start-conversation" formmethod="post">Iniciar conversación</button>
-          <div class="hint">Requiere tener cargado el Content SID en la sección "Iniciar conversación" de más arriba, y que el template ya esté aprobado por Meta.</div>
-        </div>
-      </details>
-
       <div class="actions">
         <button type="submit">Guardar cambios</button>
       </div>
@@ -604,7 +632,8 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   </template>
   <template id="numberRowTemplate">
     <div class="number-row">
-      <input type="text" name="escalationNumber" placeholder="+5491122334455">
+      <input type="text" name="escalationPhone" placeholder="+5491122334455">
+      <input type="text" name="escalationReason" placeholder="Motivo (opcional, ej. Consultas técnicas)">
     </div>
   </template>
   <template id="overrideRowTemplate">
