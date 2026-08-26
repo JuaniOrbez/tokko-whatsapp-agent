@@ -226,14 +226,14 @@ function renderStyleOverrideRow(o: Partial<CommunicationStyleOverride>): string 
 
 const NARROW_PAGE_STYLE = `
   <style>
-    .narrow { max-width: 360px; margin: 40px auto 0; display: flex; flex-direction: column; gap: 14px; }
-    .hello { font-size: 0.85rem; color: #75758c; text-align: center; margin-bottom: 2px; }
-    .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .tile { display: flex; flex-direction: column; justify-content: space-between; min-height: 118px; background: #fff; border: 1px solid #eaeaf3; border-radius: 20px; padding: 16px; text-decoration: none; color: #16162a; box-shadow: 0 1px 2px rgba(23,21,60,0.05); transition: box-shadow .15s ease, transform .1s ease; }
-    .tile:hover { box-shadow: 0 4px 14px rgba(23,21,60,0.08); transform: translateY(-1px); }
-    .tile-icon { width: 38px; height: 38px; border-radius: 11px; background: #efedfe; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; }
-    .tile-title { display: block; font-weight: 600; font-size: 0.9rem; margin-top: 12px; line-height: 1.25; }
-    .tile-sub { display: block; font-size: 0.72rem; color: #75758c; margin-top: 3px; line-height: 1.3; }
+    .narrow { max-width: 460px; margin: 40px auto 0; display: flex; flex-direction: column; gap: 16px; }
+    .hello { font-size: 0.9rem; color: #75758c; text-align: center; margin-bottom: 2px; }
+    .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .tile { display: flex; flex-direction: column; justify-content: space-between; min-height: 160px; background: #fff; border: 1px solid #eaeaf3; border-radius: 24px; padding: 22px; text-decoration: none; color: #16162a; box-shadow: 0 1px 2px rgba(23,21,60,0.05); transition: box-shadow .15s ease, transform .1s ease; }
+    .tile:hover { box-shadow: 0 6px 18px rgba(23,21,60,0.1); transform: translateY(-1px); }
+    .tile-icon { width: 52px; height: 52px; border-radius: 15px; background: #efedfe; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; }
+    .tile-title { display: block; font-weight: 700; font-size: 1.05rem; margin-top: 16px; line-height: 1.25; }
+    .tile-sub { display: block; font-size: 0.8rem; color: #75758c; margin-top: 4px; line-height: 1.35; }
     .logout-btn { width: 100%; padding: 8px 16px; font-size: 0.82rem; background: none; color: #75758c; border: 1px solid #eaeaf3; border-radius: 8px; cursor: pointer; margin-top: 4px; }
     .narrow-card { background: #fff; border: 1px solid #eaeaf3; border-radius: 14px; padding: 22px 20px; box-shadow: 0 1px 2px rgba(23,21,60,0.05); }
     .narrow-field label { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 5px; }
@@ -358,8 +358,9 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     margin: 0; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
   }
-  header {
+  header, footer {
     background: linear-gradient(120deg, var(--brand) 0%, var(--brand-dark) 55%, #4433c9 100%);
     color: white; padding: 28px 24px 32px;
     display: flex; align-items: center; gap: 14px;
@@ -373,7 +374,7 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   }
   header h1 { font-size: 1.25rem; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
   header p { margin: 3px 0 0; font-size: 0.85rem; opacity: 0.82; }
-  main { max-width: 680px; margin: 28px auto 64px; padding: 0 16px; }
+  main { flex: 1; max-width: 680px; margin: 28px auto 64px; padding: 0 16px; width: 100%; }
   .banner {
     background: #e9fbf4; border: 1px solid #9be8ce; color: #0d7a5a;
     padding: 11px 16px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem;
@@ -591,6 +592,8 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
       </div>
     </form>
   </main>
+
+  <footer></footer>
 
   <template id="stageRowTemplate">
     <div class="stage-row">

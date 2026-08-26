@@ -26,11 +26,11 @@ export function pageShell(title: string, body: string, backHref = "/admin", opts
 <style>
   :root { --brand: #6d5ef8; --brand-dark: #5646e0; --bg: #f4f5fb; --card: #ffffff; --border: #eaeaf3; --text: #16162a; --text-muted: #75758c; }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
-  header { background: linear-gradient(120deg, var(--brand) 0%, var(--brand-dark) 55%, #4433c9 100%); color: white; padding: 22px 24px; display: flex; align-items: center; gap: 12px; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+  header, footer { background: linear-gradient(120deg, var(--brand) 0%, var(--brand-dark) 55%, #4433c9 100%); color: white; padding: 22px 24px; display: flex; align-items: center; gap: 12px; }
   header a { color: white; text-decoration: none; font-size: 0.85rem; opacity: 0.85; }
   header h1 { font-size: 1.15rem; margin: 0; font-weight: 700; }
-  main { max-width: ${opts.wide ? "1120px" : "780px"}; margin: 28px auto 64px; padding: 0 16px; }
+  main { flex: 1; max-width: ${opts.wide ? "1120px" : "780px"}; margin: 28px auto 64px; padding: 0 16px; width: 100%; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(23,21,60,0.05); }
   .card a { color: var(--text); text-decoration: none; display: flex; justify-content: space-between; align-items: center; }
   .card a:hover { color: var(--brand); }
@@ -63,6 +63,7 @@ export function pageShell(title: string, body: string, backHref = "/admin", opts
     </div>
   </header>
   <main>${body}</main>
+  <footer></footer>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <script>
     if (window.mermaid) {
