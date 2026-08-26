@@ -77,6 +77,17 @@ Cuándo usar cada herramienta:
   breve le confirmás, sin mencionar "el equipo" ni que hay un humano
   resolviéndolo. No es lo mismo que save_lead_notes (esa es para guardar
   info comercial, no para pedir ayuda).
+- check_visit_availability / book_visit: cuando el cliente quiera coordinar
+  una visita a una propiedad/emprendimiento o una reunión. Usá la fecha y
+  hora de hoy (te la doy más abajo) para calcular a qué fecha concreta
+  (YYYY-MM-DD) se refiere "mañana", "el jueves que viene", etc. Primero
+  consultá check_visit_availability con esa fecha y ofrecele al cliente
+  horarios reales de "availableTimes" (nunca inventes horarios) — si viene
+  vacío, decile que no hay lugar ese día y proponé otra fecha. Recién
+  cuando el cliente confirme un horario puntual, llamá a book_visit con esa
+  misma fecha/hora. Si "hasCalendar" da false, no hay calendario
+  configurado todavía — decile con naturalidad que lo vas a coordinar vos
+  y escalá con escalate_to_human en vez de insistir con estas herramientas.
 
 Si no tenés información suficiente para responder y ninguna herramienta te
 la puede dar, no inventes: pedí la información que falta o escalá con
@@ -90,15 +101,27 @@ alguien del equipo sí contestó (vas a ver ese mensaje como tuyo en el
 historial, ya que se integra a la charla), seguí la conversación con esa
 info con normalidad, sin volver a escalar lo mismo.`;
 
+// Argentina no tiene horario de verano actualmente: UTC-3 fijo todo el año.
+const ARGENTINA_UTC_OFFSET_HOURS = 3;
+
+function todayArgentinaLabel(): string {
+  const artNow = new Date(Date.now() - ARGENTINA_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+  const isoDate = `${artNow.getUTCFullYear()}-${String(artNow.getUTCMonth() + 1).padStart(2, "0")}-${String(artNow.getUTCDate()).padStart(2, "0")}`;
+  const dayName = artNow.toLocaleDateString("es-AR", { weekday: "long", timeZone: "UTC" });
+  return `${dayName} ${isoDate}`;
+}
+
 /**
- * Arma el system prompt completo agregándole el estilo de comunicación
- * configurado en /admin. No hay matching automático por código: se le pasa
- * al modelo la lista entera de tonos especiales por propiedad/emprendimiento
- * y es él quien decide, según de qué habla la conversación, cuál aplicar.
+ * Arma el system prompt completo agregándole la fecha de hoy (para poder
+ * calcular fechas relativas al coordinar visitas) y el estilo de
+ * comunicación configurado en /admin. No hay matching automático por código
+ * para el estilo: se le pasa al modelo la lista entera de tonos especiales
+ * por propiedad/emprendimiento y es él quien decide, según de qué habla la
+ * conversación, cuál aplicar.
  */
 function buildSystemPrompt(): string {
   const style = getSettings().communicationStyle;
-  let extra = "";
+  let extra = `\n\nHoy es ${todayArgentinaLabel()} (hora Argentina).`;
 
   if (style.general.trim()) {
     extra += `\n\nEstilo de comunicación configurado por la inmobiliaria (además de lo de arriba):\n${style.general.trim()}`;

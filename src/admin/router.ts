@@ -158,6 +158,12 @@ adminRouter.post("/admin/config", (req: Request, res: Response) => {
     initiateConversationTemplateSid: String(body.initiateTemplateSid ?? "").trim() || undefined,
     initiateConversationTemplateText: String(body.initiateTemplateText ?? "").trim() || undefined,
     dailySummaryHour: toNumberOrUndefined(body.dailySummaryHour as string | undefined) ?? 20,
+    visits: {
+      calendarId: String(body.visitsCalendarId ?? "").trim() || undefined,
+      durationMinutes: toNumberOrUndefined(body.visitsDurationMinutes as string | undefined) ?? 30,
+      businessHourStart: toNumberOrUndefined(body.visitsBusinessHourStart as string | undefined) ?? 10,
+      businessHourEnd: toNumberOrUndefined(body.visitsBusinessHourEnd as string | undefined) ?? 18,
+    },
   };
 
   saveSettings(settings);
@@ -611,6 +617,29 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
             <label for="dailySummaryHour">Hora local (Argentina) en la que se manda</label>
             <input type="number" id="dailySummaryHour" name="dailySummaryHour" min="0" max="23" value="${esc(settings.dailySummaryHour)}">
             <div class="hint">Se manda por WhatsApp a los números de la sección "Números de contacto", con lo que pasó ese día. Si no hubo actividad, no manda nada.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary><span class="icon">📅</span> Visitas / Reuniones<span class="chevron">›</span></summary>
+        <div class="section-body">
+          <div class="field">
+            <label for="visitsCalendarId">ID del calendario de Google Calendar</label>
+            <input type="text" id="visitsCalendarId" name="visitsCalendarId" value="${esc(settings.visits.calendarId)}" placeholder="algo@group.calendar.google.com">
+            <div class="hint">Un calendario compartido con la cuenta de servicio (mismo permiso de "Hacer cambios en los eventos" que le diste a la carpeta de Drive) — ver docs/SETUP.md. Sin esto, el agente no puede coordinar visitas.</div>
+          </div>
+          <div class="field">
+            <label for="visitsDurationMinutes">Duración de cada visita (minutos)</label>
+            <input type="number" id="visitsDurationMinutes" name="visitsDurationMinutes" min="5" value="${esc(settings.visits.durationMinutes)}">
+          </div>
+          <div class="field">
+            <label>Horario laboral (hora Argentina, todos los días)</label>
+            <div class="stage-row" style="grid-template-columns: 1fr 1fr;">
+              <input type="number" name="visitsBusinessHourStart" min="0" max="23" value="${esc(settings.visits.businessHourStart)}" placeholder="Desde (0-23)">
+              <input type="number" name="visitsBusinessHourEnd" min="0" max="23" value="${esc(settings.visits.businessHourEnd)}" placeholder="Hasta (0-23)">
+            </div>
+            <div class="hint">El agente solo ofrece y agenda horarios dentro de este rango.</div>
           </div>
         </div>
       </details>

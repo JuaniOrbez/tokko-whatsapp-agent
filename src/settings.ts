@@ -77,6 +77,17 @@ export interface AppSettings {
   // Hora local (Argentina, 0-23) en la que se manda el resumen diario por
   // WhatsApp — ver src/scheduler.ts y src/agent/dailySummary.ts.
   dailySummaryHour: number;
+  // Coordinación de visitas/reuniones por Google Calendar (ver
+  // src/calendar/client.ts). Sin calendarId, esas herramientas no
+  // funcionan — el agente lo maneja como "todavía no hay calendario".
+  visits: {
+    calendarId?: string;
+    durationMinutes: number;
+    // Horario laboral local (Argentina, 0-23) dentro del cual se ofrecen
+    // y agendan horarios — mismo rango todos los días de la semana.
+    businessHourStart: number;
+    businessHourEnd: number;
+  };
 }
 
 const SETTINGS_PATH = path.resolve(process.cwd(), "data", "settings.json");
@@ -114,6 +125,7 @@ function defaultSettings(): AppSettings {
     initiateConversationTemplateText:
       "Hola {{1}}! Somos de ismo Propiedades. Nos comentaron que estás buscando {{2}}. ¿En qué te podemos ayudar?",
     dailySummaryHour: 20,
+    visits: { calendarId: undefined, durationMinutes: 30, businessHourStart: 10, businessHourEnd: 18 },
   };
 }
 
@@ -133,6 +145,7 @@ function normalize(loaded: Partial<AppSettings>): AppSettings {
     escalationContacts,
     tokko: { ...defaults.tokko, ...loaded.tokko },
     communicationStyle: { ...defaults.communicationStyle, ...loaded.communicationStyle },
+    visits: { ...defaults.visits, ...loaded.visits },
   };
 }
 

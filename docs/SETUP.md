@@ -246,12 +246,45 @@ Esto se maneja en memoria (`src/agent/escalation.ts`) y no depende de
 Tokko para nada — las consultas pendientes se descartan solas a las 24
 horas si nadie contesta.
 
-## 5. Claude (Anthropic)
+## 5. Google Calendar (coordinar visitas y reuniones)
+
+El agente puede consultar horarios libres y agendar una visita/reunión
+directamente en un calendario de Google, con la **misma cuenta de
+servicio** que ya creaste para Drive (no hace falta crear una nueva ni
+generar otra clave JSON).
+
+1. En [Google Cloud Console](https://console.cloud.google.com), en el
+   mismo proyecto que usaste para Drive, habilitá también la **Google
+   Calendar API** (Library → buscar "Google Calendar API" → Enable).
+2. En [Google Calendar](https://calendar.google.com), creá un calendario
+   nuevo para esto (recomendado, así no se mezcla con tu calendario
+   personal) — engranaje ⚙️ → "Crear un calendario nuevo", ponele un
+   nombre tipo "Visitas ismo Propiedades".
+3. Entrá a la configuración de ese calendario → "Compartir con
+   determinadas personas" → agregá el email de la cuenta de servicio
+   (el mismo que compartiste en Drive, algo como
+   `nombre@proyecto.iam.gserviceaccount.com` — lo encontrás en el campo
+   `client_email` del JSON que descargaste) con permiso **"Hacer cambios
+   en los eventos"**.
+4. En esa misma pantalla de configuración, bajá hasta "Integrar
+   calendario" y copiá el **ID de calendario** (termina en
+   `@group.calendar.google.com`).
+5. Pegá ese ID en `/admin/config`, sección "Visitas / Reuniones" → "ID del
+   calendario de Google Calendar". Ahí mismo se configura la duración de
+   cada visita y el horario laboral (hora Argentina) dentro del cual el
+   agente ofrece y agenda horarios.
+
+Sin el ID de calendario cargado, `check_visit_availability`/`book_visit`
+simplemente le dicen al agente que no hay calendario configurado — sigue
+funcionando todo lo demás con normalidad, y el agente escala a un humano
+en vez de insistir con coordinar la visita él mismo.
+
+## 6. Claude (Anthropic)
 
 1. Conseguí una API key en [console.anthropic.com](https://console.anthropic.com)
    → `ANTHROPIC_API_KEY`.
 
-## 6. Panel de administración (`/admin`)
+## 7. Panel de administración (`/admin`)
 
 Todo lo que antes había que editar a mano en `.env` (y reiniciar el
 servidor) para cambiar un número de teléfono o un ID de Tokko ahora se
@@ -274,10 +307,11 @@ edita desde el navegador, en caliente, sin tocar la terminal:
    - **Configuración** (`/admin/config`): donde se edita todo lo que antes
      había que tocar a mano en `.env` y reiniciar el servidor — los
      números de escalamiento (con su motivo), la carpeta y el archivo de
-     links de Zonaprop en Drive, y los IDs de Tokko (operación
+     links de Zonaprop en Drive, los IDs de Tokko (operación
      venta/alquiler y las etapas del workflow de Oportunidades — podés
-     agregar, sacar o renombrar etapas libremente, no es una lista fija).
-     Al guardar, los cambios aplican al toque, sin reiniciar nada.
+     agregar, sacar o renombrar etapas libremente, no es una lista fija) y
+     el calendario/horario laboral para coordinar visitas. Al guardar, los
+     cambios aplican al toque, sin reiniciar nada.
    - **Ver conversaciones** (`/admin/conversations`): historial y mapa de
      cada charla — ver más abajo.
    - **Resumen de hoy** (`/admin/daily-summary`): ver más abajo.

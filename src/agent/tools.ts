@@ -6,6 +6,7 @@ import { logger } from "../logger.js";
 import { getSettings } from "../settings.js";
 import { escalateToHumans } from "./escalation.js";
 import { appendToolUsage } from "./toolUsageLog.js";
+import { getAvailableSlots, bookVisit } from "../calendar/client.js";
 
 export interface AgentContext {
   customerPhone: string;
@@ -138,6 +139,39 @@ const STATIC_TOOLS_BEFORE_STAGE: Anthropic.Tool[] = [
         query: { type: "string", description: "Palabras clave del archivo a buscar y enviar." },
       },
       required: ["query"],
+    },
+  },
+  {
+    name: "check_visit_availability",
+    description:
+      "Consulta los horarios libres para coordinar una visita o reunión en una fecha puntual, " +
+      "según el calendario y el horario laboral configurados en /admin. Usala siempre antes de " +
+      "proponerle un horario al cliente — nunca inventes disponibilidad.",
+    input_schema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: 'Fecha en formato YYYY-MM-DD (hora Argentina), ej. "2026-08-27".' },
+      },
+      required: ["date"],
+    },
+  },
+  {
+    name: "book_visit",
+    description:
+      "Agenda una visita o reunión con el cliente actual en el calendario, en un horario que ya " +
+      "confirmaste como libre con check_visit_availability. No la uses sin haber confirmado antes " +
+      "la disponibilidad, ni sin que el cliente haya confirmado el horario.",
+    input_schema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: 'Fecha en formato YYYY-MM-DD (hora Argentina).' },
+        time: { type: "string", description: 'Hora en formato HH:mm (hora Argentina), ej. "15:30".' },
+        notes: {
+          type: "string",
+          description: "Detalle de la visita: propiedad/emprendimiento, dirección, motivo del encuentro.",
+        },
+      },
+      required: ["date", "time"],
     },
   },
 ];
@@ -367,6 +401,46 @@ export async function executeTool(
       const file = files[0];
       await sendDocumentByLink(ctx.customerPhone, file.downloadUrl, file.name);
       return JSON.stringify({ sent: true, file: file.name });
+    }
+
+    case "check_visit_availability": {
+      const date = input.date as string;
+      if (!getSettings().visits.calendarId) {
+        return JSON.stringify({
+          date,
+          hasCalendar: false,
+          reason: "No hay calendario de visitas configurado todavía (ver /admin).",
+        });
+      }
+      try {
+        const availableTimes = await getAvailableSlots(date);
+        return JSON.stringify({ date, hasCalendar: true, availableTimes });
+      } catch (error) {
+        logger.error("calendar.availability_failed", { date, error: String(error) });
+        return JSON.stringify({ date, hasCalendar: true, error: "No se pudo consultar el calendario." });
+      }
+    }
+
+    case "book_visit": {
+      const date = input.date as string;
+      const time = input.time as string;
+      const notes = (input.notes as string | undefined)?.trim();
+      try {
+        const result = await bookVisit({
+          dateStr: date,
+          time,
+          summary: `Visita: ${ctx.customerName}`,
+          description: `Cliente: ${ctx.customerName} (${ctx.customerPhone})${notes ? `\n${notes}` : ""}`,
+        });
+        logger.info("agent.visit_booked", { customerPhone: ctx.customerPhone, date, time, eventId: result.eventId });
+        return JSON.stringify({ booked: true, date, time });
+      } catch (error) {
+        logger.error("calendar.book_visit_failed", { customerPhone: ctx.customerPhone, date, time, error: String(error) });
+        return JSON.stringify({
+          booked: false,
+          reason: "No se pudo agendar la visita — puede que el calendario no esté configurado o que el horario ya no esté libre.",
+        });
+      }
     }
 
     case "update_opportunity_stage": {
