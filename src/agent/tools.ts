@@ -428,7 +428,7 @@ export async function executeTool(
             type: o.operation_type,
             prices: o.prices,
           })),
-          url: await resolveListingUrl([p.publication_title, p.address], p.public_url),
+          url: await resolveListingUrl([p.publication_title, p.address, p.description], p.public_url),
         })),
       );
       return JSON.stringify({

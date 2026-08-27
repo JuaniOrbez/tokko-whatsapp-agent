@@ -204,6 +204,10 @@ export async function getZonapropLinks(): Promise<ZonapropLinkEntry[]> {
   return entries;
 }
 
+function escapeForRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // Coincide en cualquier sentido: sirve tanto para un nombre corto de
 // búsqueda contra un nombre de catálogo más largo ("Torres del Parque" en
 // "Torres del Parque - Torre Norte") como al revés, para el caso de una
@@ -211,10 +215,23 @@ export async function getZonapropLinks(): Promise<ZonapropLinkEntry[]> {
 // depto ("4B") mientras que el título de Tokko es más largo ("UF 4B - 3
 // ambientes en Núñez"): "4b" no "incluye" el título largo, pero el título
 // largo sí incluye "4b".
+//
+// Además, si nada de eso matchea, prueba con la ÚLTIMA palabra del nombre
+// de la planilla (típicamente el código de la unidad, ej. "4F" en "LA
+// ARBOLEDA 4F") como palabra suelta dentro del texto buscado — cubre el
+// caso real de que Tokko no repita el nombre del emprendimiento en ningún
+// campo, y el código de la unidad solo aparezca (a veces perdido en medio
+// de otro texto) en la descripción.
 function matches(candidateName: string, query: string): boolean {
   const a = candidateName.toLowerCase();
   const b = query.toLowerCase();
-  return a.includes(b) || b.includes(a);
+  if (a.includes(b) || b.includes(a)) return true;
+
+  const lastToken = a.split(/\s+/).pop();
+  if (lastToken && lastToken.length >= 2) {
+    return new RegExp(`\\b${escapeForRegExp(lastToken)}\\b`, "i").test(b);
+  }
+  return false;
 }
 
 /**

@@ -228,18 +228,23 @@ que los nombres de cada línea sean lo bastante específicos para no
 pisarse entre carpetas (ej. el número de unidad completo, no solo "4B" si
 dos emprendimientos distintos tienen un depto "4B" cada uno).
 
-**Cómo matchea con lo que hay en Tokko**: el agente cruza el nombre que
-pusiste acá contra el título de la publicación (o la dirección) que trae
-Tokko, en cualquiera de los dos sentidos — alcanza con que uno contenga al
-otro. Esto importa especialmente para unidades sueltas dentro de un
-emprendimiento: las **características (ambientes, m², precio) tienen que
-estar cargadas en Tokko**, porque de ahí es de donde el agente filtra
-cuando alguien pide, por ejemplo, "un 3 ambientes" — en la planilla de
-Zonaprop alcanza con poner el **identificador de la unidad** (ej. el
-número de depto, "4B"), siempre que ese mismo identificador aparezca en el
-título o la dirección de la publicación en Tokko. Si no coincide nada
-(unidad, texto distinto en cada lado, etc.), el agente cae en el link
-propio de Tokko en vez de no mandar nada.
+**Cómo matchea con lo que hay en Tokko**: el agente busca el identificador
+de la unidad (ej. "4F" en "LA ARBOLEDA 4F") en el **título, la dirección o
+la descripción** de la publicación en Tokko — contra cualquiera de los
+tres, en cualquiera de los sentidos (alcanza con que uno contenga al
+otro), y también reconoce el código como palabra suelta aunque no venga
+acompañado del nombre del emprendimiento (típico caso: el título es
+genérico para todo el edificio — "Departamento en Belgrano C" — y el
+código de la unidad solo está en la descripción). Esto importa
+especialmente para unidades sueltas dentro de un emprendimiento: las
+**características (ambientes, m², precio) tienen que estar cargadas en
+Tokko**, porque de ahí es de donde el agente filtra cuando alguien pide,
+por ejemplo, "un 3 ambientes" — en la planilla de Zonaprop alcanza con
+poner el **identificador de la unidad**, siempre que ese mismo
+identificador aparezca en algún lado de la publicación en Tokko (título,
+dirección o descripción). Si no aparece en ningún lado, no hay forma de
+cruzarlo — el agente cae en el link propio de Tokko en vez de no mandar
+nada.
 
 Es mantenimiento manual (hay que cargar cada línea a mano), pero no es
 estrictamente necesario — si no armás el archivo, el agente simplemente
