@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { tokkoClient } from "../tokko/client.js";
-import { findFilesByName, findZonapropLink } from "../drive/client.js";
+import { findFilesByName, findZonapropLink, getZonapropLinks } from "../drive/client.js";
 import { sendDocumentByLink, sendText } from "../whatsapp/client.js";
 import { logger } from "../logger.js";
 import { config } from "../config.js";
@@ -28,10 +28,23 @@ async function resolveListingUrl(
   queries: (string | undefined)[],
   tokkoFallback: string | undefined,
 ): Promise<string | undefined> {
-  for (const query of queries) {
-    if (!query?.trim()) continue;
+  const tried = queries.filter((q): q is string => Boolean(q?.trim()));
+  for (const query of tried) {
     const zonapropLink = await findZonapropLink(query);
     if (zonapropLink) return zonapropLink;
+  }
+  // Si había candidatos para probar pero ninguno matcheó nada en la
+  // planilla, lo logueamos — si esto pasa seguido puede ser que el
+  // identificador de la unidad en Drive no aparezca tal cual en el
+  // título/dirección de Tokko (formato distinto, ausente, etc.).
+  if (tried.length > 0) {
+    const zonapropEntries = await getZonapropLinks();
+    if (zonapropEntries.length > 0) {
+      logger.info("drive.zonaprop_no_match", {
+        tried,
+        zonapropEntryNames: zonapropEntries.map((e) => e.name),
+      });
+    }
   }
   return tokkoFallback || undefined;
 }
