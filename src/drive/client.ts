@@ -106,44 +106,17 @@ export interface ZonapropLinkEntry {
 let zonapropCache: { entries: ZonapropLinkEntry[]; fetchedAt: number } | null = null;
 const ZONAPROP_CACHE_TTL_MS = 2 * 60 * 1000;
 
-/**
- * Trae y parsea el archivo de links de Zonaprop de Drive (una lista a mano
- * tipo "nombre,link" por línea, ver docs/SETUP.md) — Tokko no expone ese
- * link por API, es de Zonaprop. El nombre del archivo se configura desde
- * /admin (getSettings().zonapropLinksFileName). Devuelve [] si no existe el
- * archivo.
- */
-export async function getZonapropLinks(): Promise<ZonapropLinkEntry[]> {
-  if (zonapropCache && Date.now() - zonapropCache.fetchedAt < ZONAPROP_CACHE_TTL_MS) {
-    return zonapropCache.entries;
-  }
-
-  // Búsqueda directa (sin pasar por findFilesByName) para no hacer público
-  // por accidente un archivo que es solo para uso interno del agente.
-  const fileName = getSettings().zonapropLinksFileName;
-  const list = await drive.files.list({
-    q: `trashed = false and name contains '${escapeForDriveQuery(fileName)}'${await parentsClause()}`,
-    fields: "files(id, mimeType)",
-    pageSize: 1,
-  });
-  const file = list.data.files?.[0];
-  if (!file?.id) return [];
-
+/** Descarga y parsea un único archivo de links ("nombre,link" por línea) — Doc/Sheet nativo se exporta, un archivo binario se baja directo. */
+async function parseZonapropFile(file: { id: string; mimeType?: string | null }): Promise<ZonapropLinkEntry[]> {
   // Un Google Doc/Sheet nativo no se puede descargar con alt=media (da 403
   // "Only files with binary content..."), hay que exportarlo a texto plano.
   // El mimeType de exportación soportado difiere entre Doc y Sheet.
   let content: string;
   if (file.mimeType === "application/vnd.google-apps.spreadsheet") {
-    const res = await drive.files.export(
-      { fileId: file.id, mimeType: "text/csv" },
-      { responseType: "text" },
-    );
+    const res = await drive.files.export({ fileId: file.id, mimeType: "text/csv" }, { responseType: "text" });
     content = res.data as unknown as string;
   } else if (file.mimeType?.startsWith("application/vnd.google-apps")) {
-    const res = await drive.files.export(
-      { fileId: file.id, mimeType: "text/plain" },
-      { responseType: "text" },
-    );
+    const res = await drive.files.export({ fileId: file.id, mimeType: "text/plain" }, { responseType: "text" });
     content = res.data as unknown as string;
   } else {
     const res = await drive.files.get({ fileId: file.id, alt: "media" }, { responseType: "text" });
@@ -158,6 +131,39 @@ export async function getZonapropLinks(): Promise<ZonapropLinkEntry[]> {
     const link = line.slice(commaIndex + 1).trim();
     if (name && link) entries.push({ name, link });
   }
+  return entries;
+}
+
+const MAX_ZONAPROP_FILES = 50;
+
+/**
+ * Trae y parsea TODOS los archivos de links de Zonaprop de Drive (una
+ * lista a mano tipo "nombre,link" por línea, ver docs/SETUP.md) — Tokko no
+ * expone ese link por API, es de Zonaprop. El nombre se configura desde
+ * /admin (getSettings().zonapropLinksFileName), pero puede haber más de un
+ * archivo con ese mismo nombre en distintas carpetas (ej. una carpeta por
+ * emprendimiento, cada una con su propio archivo "Links Zonaprop" además
+ * de los PDFs) — se juntan las líneas de todos. Devuelve [] si no hay
+ * ningún archivo.
+ */
+export async function getZonapropLinks(): Promise<ZonapropLinkEntry[]> {
+  if (zonapropCache && Date.now() - zonapropCache.fetchedAt < ZONAPROP_CACHE_TTL_MS) {
+    return zonapropCache.entries;
+  }
+
+  // Búsqueda directa (sin pasar por findFilesByName) para no hacer público
+  // por accidente un archivo que es solo para uso interno del agente.
+  const fileName = getSettings().zonapropLinksFileName;
+  const list = await drive.files.list({
+    q: `trashed = false and name contains '${escapeForDriveQuery(fileName)}'${await parentsClause()}`,
+    fields: "files(id, mimeType)",
+    pageSize: MAX_ZONAPROP_FILES,
+  });
+  const files = (list.data.files ?? []).filter((f): f is { id: string; mimeType?: string | null } => Boolean(f.id));
+  if (files.length === 0) return [];
+
+  const entriesPerFile = await Promise.all(files.map(parseZonapropFile));
+  const entries = entriesPerFile.flat();
   zonapropCache = { entries, fetchedAt: Date.now() };
   return entries;
 }

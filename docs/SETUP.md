@@ -192,14 +192,27 @@ solo como respaldo si esa propiedad/emprendimiento puntual todavía no está
 cargado en la planilla.
 
 Armá un archivo de texto plano (`.txt` o `.csv`) en la carpeta de Drive
-configurada, con el nombre que tengas puesto en **`/admin/config`**
-(sección "Google Drive" — por defecto **`Links Zonaprop`**), con una línea
-por propiedad/emprendimiento:
+configurada (o en una subcarpeta — busca en toda la jerarquía), con el
+nombre que tengas puesto en **`/admin/config`** (sección "Google Drive" —
+por defecto **`Links Zonaprop`**), con una línea por propiedad/emprendimiento:
 
 ```
 LA VECINDAD Freire,https://www.zonaprop.com.ar/propiedades/clasificado/...
 4B,https://www.zonaprop.com.ar/propiedades/clasificado/...
 ```
+
+**Podés tener más de un archivo con ese mismo nombre** — por ejemplo, una
+carpeta por emprendimiento (LA VECINDAD, LA ARBOLEDA, etc.) y adentro de
+cada una, junto a los PDFs, su propio archivo `Links Zonaprop` con los
+links de esa carpeta puntual. El agente los junta todos (no importa en qué
+subcarpeta estén) — antes de este cambio solo tomaba el primero que
+encontraba y ese quedaba fijo, así que si tenías más de uno solo
+funcionaba el de esa carpeta. Eso sí: si dos archivos tienen una línea con
+el mismo nombre (o uno que matchea al otro), gana el que Drive haya
+devuelto primero — no hay forma de saber cuál sin probar, así que conviene
+que los nombres de cada línea sean lo bastante específicos para no
+pisarse entre carpetas (ej. el número de unidad completo, no solo "4B" si
+dos emprendimientos distintos tienen un depto "4B" cada uno).
 
 **Cómo matchea con lo que hay en Tokko**: el agente cruza el nombre que
 pusiste acá contra el título de la publicación (o la dirección) que trae
