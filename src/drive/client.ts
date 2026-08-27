@@ -208,6 +208,12 @@ function escapeForRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Piso + letra al final del nombre (ej. "4F", "4 F", "4° F", "4°F") — el
+// formato típico de un código de unidad. Separado en dos grupos para poder
+// reconstruir una búsqueda flexible que no dependa de cómo se haya
+// escrito el espacio/símbolo de grado en cada lado.
+const UNIT_CODE_REGEX = /(\d+)\s*°?\s*([a-zA-Z])$/;
+
 // Coincide en cualquier sentido: sirve tanto para un nombre corto de
 // búsqueda contra un nombre de catálogo más largo ("Torres del Parque" en
 // "Torres del Parque - Torre Norte") como al revés, para el caso de una
@@ -216,16 +222,26 @@ function escapeForRegExp(value: string): string {
 // ambientes en Núñez"): "4b" no "incluye" el título largo, pero el título
 // largo sí incluye "4b".
 //
-// Además, si nada de eso matchea, prueba con la ÚLTIMA palabra del nombre
-// de la planilla (típicamente el código de la unidad, ej. "4F" en "LA
-// ARBOLEDA 4F") como palabra suelta dentro del texto buscado — cubre el
-// caso real de que Tokko no repita el nombre del emprendimiento en ningún
+// Si nada de eso matchea, prueba dos heurísticas más para cubrir el caso
+// real de que Tokko no repita el nombre del emprendimiento en ningún
 // campo, y el código de la unidad solo aparezca (a veces perdido en medio
-// de otro texto) en la descripción.
+// de una descripción larga):
+// 1. Si el nombre de la planilla termina en un código de unidad tipo
+//    "piso + letra" (ver UNIT_CODE_REGEX, cubre "4F", "4 F", "4° F"...),
+//    se busca ese mismo piso+letra en el texto, sin importar cómo esté
+//    escrito el espacio/símbolo de grado en ninguno de los dos lados.
+// 2. Si no, se prueba con la última palabra suelta del nombre (para
+//    códigos que no siguen ese patrón, ej. "PH", "Freire").
 function matches(candidateName: string, query: string): boolean {
   const a = candidateName.toLowerCase();
   const b = query.toLowerCase();
   if (a.includes(b) || b.includes(a)) return true;
+
+  const unitCode = a.match(UNIT_CODE_REGEX);
+  if (unitCode) {
+    const [, floor, letter] = unitCode;
+    return new RegExp(`\\b${floor}\\s*°?\\s*${letter}\\b`, "i").test(b);
+  }
 
   const lastToken = a.split(/\s+/).pop();
   if (lastToken && lastToken.length >= 2) {
