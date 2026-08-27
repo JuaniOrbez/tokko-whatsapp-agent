@@ -72,6 +72,10 @@ export interface TokkoSearchFilters {
   currency?: string;
   location?: string; // texto libre, matchea contra location.name / full_location
   roomAmountFrom?: number;
+  // Opcional — si viene igual a roomAmountFrom, filtra por una cantidad
+  // exacta de ambientes en vez de "X o más" (ver matchesFilters en
+  // tokko/client.ts).
+  roomAmountTo?: number;
   limit?: number;
 }
 

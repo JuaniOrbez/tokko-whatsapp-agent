@@ -111,6 +111,14 @@ const STATIC_TOOLS_BEFORE_STAGE: Anthropic.Tool[] = [
         price_max: { type: "number" },
         currency: { type: "string", enum: ["USD", "ARS"], default: "USD" },
         rooms_min: { type: "number", description: "Cantidad mínima de ambientes." },
+        rooms_max: {
+          type: "number",
+          description:
+            "Cantidad máxima de ambientes — opcional. Si el cliente pidió una cantidad EXACTA de " +
+            "ambientes (ej. 'un 2 ambientes'), pasá rooms_min y rooms_max con el mismo valor, para no " +
+            "traer propiedades con más ambientes de los pedidos. Si pidió 'de X para arriba' o no " +
+            "aclaró, no mandes este campo.",
+        },
       },
       required: [],
     },
@@ -383,12 +391,13 @@ export async function executeTool(
     case "search_properties": {
       const operation = input.operation as "venta" | "alquiler" | undefined;
       const roomsMin = input.rooms_min as number | undefined;
+      const roomsMax = input.rooms_max as number | undefined;
       if (roomsMin !== undefined) {
         appendToolUsage({
           ts: Date.now(),
           phone: ctx.customerPhone,
           kind: "typology",
-          value: `${roomsMin}+ ambientes`,
+          value: roomsMin === roomsMax ? `${roomsMin} ambientes` : `${roomsMin}+ ambientes`,
         });
       }
       const location = (input.location as string | undefined)?.trim();
@@ -409,6 +418,7 @@ export async function executeTool(
         priceTo: input.price_max as number | undefined,
         currency: (input.currency as string | undefined) ?? "USD",
         roomAmountFrom: input.rooms_min as number | undefined,
+        roomAmountTo: input.rooms_max as number | undefined,
         location,
         limit: 8,
       });

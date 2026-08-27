@@ -68,6 +68,9 @@ function matchesFilters(property: TokkoProperty, filters: TokkoSearchFilters): b
   if (filters.roomAmountFrom !== undefined) {
     if ((property.room_amount ?? 0) < filters.roomAmountFrom) return false;
   }
+  if (filters.roomAmountTo !== undefined) {
+    if ((property.room_amount ?? 0) > filters.roomAmountTo) return false;
+  }
 
   if (filters.location) {
     const needle = filters.location.trim().toLowerCase();
