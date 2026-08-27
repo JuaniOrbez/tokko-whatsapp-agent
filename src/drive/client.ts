@@ -106,7 +106,7 @@ export interface ZonapropLinkEntry {
 let zonapropCache: { entries: ZonapropLinkEntry[]; fetchedAt: number } | null = null;
 const ZONAPROP_CACHE_TTL_MS = 2 * 60 * 1000;
 
-/** Descarga y parsea un único archivo de links ("nombre,link" por línea) — Doc/Sheet nativo se exporta, un archivo binario se baja directo. */
+/** Descarga y parsea un único archivo de links (ver parseZonapropLines para los formatos aceptados) — Doc/Sheet nativo se exporta, un archivo binario se baja directo. */
 async function parseZonapropFile(file: { id: string; mimeType?: string | null }): Promise<ZonapropLinkEntry[]> {
   // Un Google Doc/Sheet nativo no se puede descargar con alt=media (da 403
   // "Only files with binary content..."), hay que exportarlo a texto plano.
@@ -123,13 +123,49 @@ async function parseZonapropFile(file: { id: string; mimeType?: string | null })
     content = res.data as unknown as string;
   }
 
+  return parseZonapropLines(content);
+}
+
+const URL_LINE_REGEX = /^https?:\/\/\S+$/i;
+
+/**
+ * Acepta dos formatos, línea por línea (los que se vieron en vivo en
+ * archivos reales): "nombre,link" en una sola línea, o el nombre en una
+ * línea y el link solo en la siguiente (con o sin línea en blanco entre
+ * medio) — el segundo es lo que arma naturalmente un Google Doc con un
+ * título y abajo el link pegado, sin coma. Una línea que no es URL y no
+ * tiene coma queda "pendiente" hasta que aparece una URL para emparejarla;
+ * si aparece una URL sin ningún nombre pendiente, se descarta (no hay con
+ * qué matchear después).
+ */
+function parseZonapropLines(content: string): ZonapropLinkEntry[] {
   const entries: ZonapropLinkEntry[] = [];
-  for (const line of content.split("\n")) {
+  let pendingName: string | null = null;
+
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (URL_LINE_REGEX.test(line)) {
+      if (pendingName) {
+        entries.push({ name: pendingName, link: line });
+        pendingName = null;
+      }
+      continue;
+    }
+
     const commaIndex = line.indexOf(",");
-    if (commaIndex === -1) continue;
-    const name = line.slice(0, commaIndex).trim();
-    const link = line.slice(commaIndex + 1).trim();
-    if (name && link) entries.push({ name, link });
+    if (commaIndex !== -1) {
+      const name = line.slice(0, commaIndex).trim();
+      const link = line.slice(commaIndex + 1).trim();
+      if (name && link) {
+        entries.push({ name, link });
+        pendingName = null;
+        continue;
+      }
+    }
+
+    pendingName = line;
   }
   return entries;
 }

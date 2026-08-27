@@ -191,14 +191,28 @@ por sobre el de Tokko** cuando lo comparte (en `search_properties`,
 solo como respaldo si esa propiedad/emprendimiento puntual todavía no está
 cargado en la planilla.
 
-Armá un archivo de texto plano (`.txt` o `.csv`) en la carpeta de Drive
+Armá un archivo (Doc, Sheet o texto plano) en la carpeta de Drive
 configurada (o en una subcarpeta — busca en toda la jerarquía), con el
 nombre que tengas puesto en **`/admin/config`** (sección "Google Drive" —
-por defecto **`Links Zonaprop`**), con una línea por propiedad/emprendimiento:
+por defecto **`Links Zonaprop`**), con el nombre de cada propiedad/
+emprendimiento y su link. Acepta dos formatos, se pueden mezclar en el
+mismo archivo:
 
+**Nombre y link en la misma línea, separados por coma:**
 ```
 LA VECINDAD Freire,https://www.zonaprop.com.ar/propiedades/clasificado/...
 4B,https://www.zonaprop.com.ar/propiedades/clasificado/...
+```
+
+**Nombre en una línea y el link en la siguiente** (lo que arma naturalmente
+un Google Doc con un título y el link pegado abajo, sin coma — funciona
+haya o no una línea en blanco entre uno y otro):
+```
+LA ARBOLEDA 4F
+https://www.zonaprop.com.ar/propiedades/emprendimiento/...-59798356.html
+
+LA ARBOLEDA 6B
+https://www.zonaprop.com.ar/propiedades/emprendimiento/...-59798357.html
 ```
 
 **Podés tener más de un archivo con ese mismo nombre** — por ejemplo, una
