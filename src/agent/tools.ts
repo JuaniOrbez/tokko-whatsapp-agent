@@ -12,6 +12,30 @@ import { storeIcs } from "../calendar/icsStore.js";
 import { appendStageLog } from "./stageLog.js";
 import { appendTierLog } from "./tierLog.js";
 
+/**
+ * Prioriza el link de Zonaprop (planilla en Drive) sobre el link propio de
+ * Tokko — pedido explícito: los links que comparte el agente tienen que
+ * ser de Zonaprop, el de Tokko queda solo como respaldo si esa unidad
+ * puntual todavía no está cargada en la planilla. `queries` son los textos
+ * por los que probar en la planilla, en orden (ej. título de la
+ * publicación y después la dirección) — gana el primero que matchee algo
+ * (ver findZonapropLink, matchea en cualquier sentido: sirve tanto si la
+ * planilla tiene el número de unidad como si tiene el nombre completo).
+ * Un candidato vacío se salta (una búsqueda vacía matchearía cualquier
+ * línea).
+ */
+async function resolveListingUrl(
+  queries: (string | undefined)[],
+  tokkoFallback: string | undefined,
+): Promise<string | undefined> {
+  for (const query of queries) {
+    if (!query?.trim()) continue;
+    const zonapropLink = await findZonapropLink(query);
+    if (zonapropLink) return zonapropLink;
+  }
+  return tokkoFallback || undefined;
+}
+
 export interface AgentContext {
   customerPhone: string;
   customerName: string;
@@ -110,11 +134,11 @@ const STATIC_TOOLS_BEFORE_STAGE: Anthropic.Tool[] = [
   {
     name: "get_zonaprop_link",
     description:
-      "Busca el link de la publicación en Zonaprop de una propiedad o emprendimiento por nombre. " +
-      "Tokko no expone ese link por API (es de Zonaprop), así que sale de una lista a mano en " +
-      "Drive — puede no estar cargado. Usala solo si el cliente pide específicamente el link de " +
-      "Zonaprop; para el link general de la publicación usá el que ya viene en search_properties/" +
-      "get_development_details.",
+      "Busca el link de Zonaprop de una propiedad o emprendimiento por nombre — normalmente no hace " +
+      "falta llamarla aparte, porque search_properties/search_developments/get_development_details ya " +
+      "devuelven el link de Zonaprop en 'url' cuando está cargado en Drive. Usala solo si necesitás " +
+      "buscar el link de algo puntual por nombre, fuera de esos resultados (ej. el cliente menciona " +
+      "una unidad específica que no salió en la búsqueda).",
     input_schema: {
       type: "object",
       properties: {
@@ -376,22 +400,24 @@ export async function executeTool(
         limit: 8,
       });
 
-      const summaries = items.map((p) => ({
-        id: p.id,
-        title: p.publication_title,
-        // Preferimos la ubicación del emprendimiento (development.location)
-        // sobre la de la unidad: en casos reales la de la unidad individual
-        // estaba mal cargada en Tokko (ver comentario en types.ts).
-        address: p.development?.location?.name ?? p.address ?? p.location?.name,
-        development_name: p.development?.name,
-        rooms: p.room_amount,
-        surface_m2: p.surface,
-        operations: p.operations?.map((o) => ({
-          type: o.operation_type,
-          prices: o.prices,
+      const summaries = await Promise.all(
+        items.map(async (p) => ({
+          id: p.id,
+          title: p.publication_title,
+          // Preferimos la ubicación del emprendimiento (development.location)
+          // sobre la de la unidad: en casos reales la de la unidad individual
+          // estaba mal cargada en Tokko (ver comentario en types.ts).
+          address: p.development?.location?.name ?? p.address ?? p.location?.name,
+          development_name: p.development?.name,
+          rooms: p.room_amount,
+          surface_m2: p.surface,
+          operations: p.operations?.map((o) => ({
+            type: o.operation_type,
+            prices: o.prices,
+          })),
+          url: await resolveListingUrl([p.publication_title, p.address], p.public_url),
         })),
-        url: p.public_url,
-      }));
+      );
       return JSON.stringify({
         properties: summaries,
         // exhausted=true: shown_count es el total real. exhausted=false:
@@ -405,12 +431,14 @@ export async function executeTool(
 
     case "search_developments": {
       const developments = await tokkoClient.searchDevelopments(input.query as string);
-      const summaries = developments.map((d) => ({
-        id: d.id,
-        name: d.name,
-        address: d.address ?? d.location?.name,
-        url: d.web_url || undefined,
-      }));
+      const summaries = await Promise.all(
+        developments.map(async (d) => ({
+          id: d.id,
+          name: d.name,
+          address: d.address ?? d.location?.name,
+          url: await resolveListingUrl([d.name, d.address], d.web_url),
+        })),
+      );
       if (summaries.length > 0 && summaries[0].name) {
         appendToolUsage({ ts: Date.now(), phone: ctx.customerPhone, kind: "development", value: summaries[0].name });
       }
@@ -427,7 +455,7 @@ export async function executeTool(
         name: development.name,
         description: development.description || undefined,
         address: development.address ?? development.location?.name,
-        url: development.web_url || undefined,
+        url: await resolveListingUrl([development.name, development.address], development.web_url),
         photo_count: development.photos?.length ?? 0,
       });
     }

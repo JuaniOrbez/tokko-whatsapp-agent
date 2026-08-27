@@ -92,15 +92,32 @@ export async function findFilesByName(query: string, limit = 5): Promise<DriveFi
   return results;
 }
 
+export interface ZonapropLinkEntry {
+  name: string;
+  link: string;
+}
+
+// Cache corto en memoria: search_properties puede pedir esta lista una vez
+// por resultado (hasta 8 propiedades) en la misma llamada — sin esto sería
+// un GET a Drive por cada una. 2 minutos alcanza para que dentro de un
+// mismo tool call (o dos seguidos del agente) no se repita el fetch, sin
+// arriesgarse a servir una lista vieja por mucho tiempo si alguien edita el
+// archivo en Drive.
+let zonapropCache: { entries: ZonapropLinkEntry[]; fetchedAt: number } | null = null;
+const ZONAPROP_CACHE_TTL_MS = 2 * 60 * 1000;
+
 /**
- * Busca el link de Zonaprop de una propiedad/emprendimiento en un archivo
- * de texto simple en Drive (una lista a mano tipo "nombre,link" por línea,
- * ver docs/SETUP.md) — Tokko no expone ese link por API, es de Zonaprop.
- * El nombre del archivo se configura desde /admin (getSettings().zonapropLinksFileName).
- * Devuelve null si no existe el archivo o no hay ninguna línea que
- * coincida con `query`.
+ * Trae y parsea el archivo de links de Zonaprop de Drive (una lista a mano
+ * tipo "nombre,link" por línea, ver docs/SETUP.md) — Tokko no expone ese
+ * link por API, es de Zonaprop. El nombre del archivo se configura desde
+ * /admin (getSettings().zonapropLinksFileName). Devuelve [] si no existe el
+ * archivo.
  */
-export async function findZonapropLink(query: string): Promise<string | null> {
+export async function getZonapropLinks(): Promise<ZonapropLinkEntry[]> {
+  if (zonapropCache && Date.now() - zonapropCache.fetchedAt < ZONAPROP_CACHE_TTL_MS) {
+    return zonapropCache.entries;
+  }
+
   // Búsqueda directa (sin pasar por findFilesByName) para no hacer público
   // por accidente un archivo que es solo para uso interno del agente.
   const fileName = getSettings().zonapropLinksFileName;
@@ -110,7 +127,7 @@ export async function findZonapropLink(query: string): Promise<string | null> {
     pageSize: 1,
   });
   const file = list.data.files?.[0];
-  if (!file?.id) return null;
+  if (!file?.id) return [];
 
   // Un Google Doc/Sheet nativo no se puede descargar con alt=media (da 403
   // "Only files with binary content..."), hay que exportarlo a texto plano.
@@ -133,15 +150,41 @@ export async function findZonapropLink(query: string): Promise<string | null> {
     content = res.data as unknown as string;
   }
 
-  const needle = query.trim().toLowerCase();
+  const entries: ZonapropLinkEntry[] = [];
   for (const line of content.split("\n")) {
     const commaIndex = line.indexOf(",");
     if (commaIndex === -1) continue;
     const name = line.slice(0, commaIndex).trim();
     const link = line.slice(commaIndex + 1).trim();
-    if (name.toLowerCase().includes(needle) && link) return link;
+    if (name && link) entries.push({ name, link });
   }
-  return null;
+  zonapropCache = { entries, fetchedAt: Date.now() };
+  return entries;
+}
+
+// Coincide en cualquier sentido: sirve tanto para un nombre corto de
+// búsqueda contra un nombre de catálogo más largo ("Torres del Parque" en
+// "Torres del Parque - Torre Norte") como al revés, para el caso de una
+// unidad puntual — en la planilla de Zonaprop puede haber solo el número de
+// depto ("4B") mientras que el título de Tokko es más largo ("UF 4B - 3
+// ambientes en Núñez"): "4b" no "incluye" el título largo, pero el título
+// largo sí incluye "4b".
+function matches(candidateName: string, query: string): boolean {
+  const a = candidateName.toLowerCase();
+  const b = query.toLowerCase();
+  return a.includes(b) || b.includes(a);
+}
+
+/**
+ * Busca el link de Zonaprop de una propiedad/emprendimiento por nombre
+ * (ver getZonapropLinks) — devuelve null si no hay archivo cargado o
+ * ninguna línea coincide con `query`.
+ */
+export async function findZonapropLink(query: string): Promise<string | null> {
+  const entries = await getZonapropLinks();
+  const needle = query.trim();
+  const found = entries.find((e) => matches(e.name, needle));
+  return found?.link ?? null;
 }
 
 /**

@@ -181,24 +181,42 @@ ver" al momento de enviarlos — si preferís no hacer eso (por ejemplo,
 archivos confidenciales), hay que cambiar `ensurePublicLink` en
 `src/drive/client.ts` por otro mecanismo de distribución.
 
-### Links de Zonaprop (opcional)
+### Links de Zonaprop
 
 Tokko no expone por API el link de la publicación en Zonaprop (ver
 comentario en `findZonapropLink` de `src/drive/client.ts`) — es un dato que
-genera Zonaprop, no Tokko. Si querés que el agente pueda pasarlo cuando se
-lo pidan, armá un archivo de texto plano (`.txt` o `.csv`) en la misma
-carpeta de Drive, con el nombre que tengas configurado en **`/admin/config`**
+genera Zonaprop, no Tokko. **El agente prioriza siempre el link de Zonaprop
+por sobre el de Tokko** cuando lo comparte (en `search_properties`,
+`search_developments` y `get_development_details`) — el de Tokko queda
+solo como respaldo si esa propiedad/emprendimiento puntual todavía no está
+cargado en la planilla.
+
+Armá un archivo de texto plano (`.txt` o `.csv`) en la carpeta de Drive
+configurada, con el nombre que tengas puesto en **`/admin/config`**
 (sección "Google Drive" — por defecto **`Links Zonaprop`**), con una línea
 por propiedad/emprendimiento:
 
 ```
 LA VECINDAD Freire,https://www.zonaprop.com.ar/propiedades/clasificado/...
-Otra propiedad,https://www.zonaprop.com.ar/propiedades/clasificado/...
+4B,https://www.zonaprop.com.ar/propiedades/clasificado/...
 ```
 
-Es mantenimiento manual (hay que cargar cada línea a mano), así que es
-opcional — si no armás el archivo, `get_zonaprop_link` simplemente no
-encuentra nada y el agente lo dice con naturalidad.
+**Cómo matchea con lo que hay en Tokko**: el agente cruza el nombre que
+pusiste acá contra el título de la publicación (o la dirección) que trae
+Tokko, en cualquiera de los dos sentidos — alcanza con que uno contenga al
+otro. Esto importa especialmente para unidades sueltas dentro de un
+emprendimiento: las **características (ambientes, m², precio) tienen que
+estar cargadas en Tokko**, porque de ahí es de donde el agente filtra
+cuando alguien pide, por ejemplo, "un 3 ambientes" — en la planilla de
+Zonaprop alcanza con poner el **identificador de la unidad** (ej. el
+número de depto, "4B"), siempre que ese mismo identificador aparezca en el
+título o la dirección de la publicación en Tokko. Si no coincide nada
+(unidad, texto distinto en cada lado, etc.), el agente cae en el link
+propio de Tokko en vez de no mandar nada.
+
+Es mantenimiento manual (hay que cargar cada línea a mano), pero no es
+estrictamente necesario — si no armás el archivo, el agente simplemente
+comparte el link de Tokko como venía haciendo antes.
 
 ## 4. Escalamiento a un humano
 
