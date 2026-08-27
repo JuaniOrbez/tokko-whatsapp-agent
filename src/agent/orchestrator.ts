@@ -69,6 +69,14 @@ Cuándo usar cada herramienta:
   significado de cada etapa). Es un registro interno para que el equipo lo
   aplique después a mano en Tokko — no es visible para el cliente ni hace
   falta mencionárselo.
+- classify_contact_tier: para perfilar al cliente en uno de los tiers
+  configurados (ver la descripción de la herramienta para el criterio de
+  cada uno) — usala cuando ya tengas elementos concretos de la charla para
+  elegir con criterio (no en el primer mensaje, ni adivinando). Es un
+  registro interno para priorizar seguimiento, igual que la etapa — nunca
+  le menciones al cliente que lo estás clasificando ni en qué tier quedó.
+  Si más adelante en la misma charla aparecen señales que cambian el
+  panorama, podés reclasificarlo.
 - escalate_to_human: cuando el cliente pida algo que ninguna herramienta te
   puede resolver (un dato que no está en Tokko/Drive, una condición
   comercial particular, reclamo, o simplemente no sabés la respuesta),

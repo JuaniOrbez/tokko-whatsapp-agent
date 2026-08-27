@@ -39,6 +39,22 @@ export interface TeamMember {
   reason: string;
 }
 
+export interface TierDefinition {
+  // Fijo: "tier_1".."tier_4" — a diferencia de las etapas de Tokko, acá
+  // siempre son exactamente 4 (ver stageLog.ts para el paralelo de
+  // etapas, que sí es una lista libre).
+  key: string;
+  // Nombre visible, editable (default "Tier 1", pero se puede renombrar,
+  // ej. "Tier 1 - Prioridad alta").
+  label: string;
+  // Descripción en lenguaje natural de qué caracteriza a un contacto de
+  // este tier (ej. "Preguntó presupuesto y ubicación concretos, pidió
+  // visitar pronto") — es lo único que ve el agente para decidir a qué
+  // tier corresponde cada cliente (ver tools.ts#buildClassifyTierTool).
+  // Vacío = ese tier no se usa (el agente no lo tiene entre las opciones).
+  criteria: string;
+}
+
 export interface CommunicationStyleOverride {
   // Nombre (o parte del nombre) de una propiedad/emprendimiento — el
   // agente decide él mismo si la conversación actual coincide, no hay
@@ -107,6 +123,10 @@ export interface AppSettings {
     // sábado, como Date#getDay()).
     businessDays: number[];
   };
+  // Perfilado de clientes: siempre exactamente 4 tiers (ver TierDefinition)
+  // — el agente los usa para clasificar según cómo viene la charla (ver
+  // src/agent/tierLog.ts y /admin/contacts).
+  tiers: TierDefinition[];
 }
 
 const SETTINGS_PATH = path.resolve(process.cwd(), "data", "settings.json");
@@ -151,7 +171,17 @@ function defaultSettings(): AppSettings {
       "Hola {{1}}! Somos de ismo Propiedades. Nos comentaron que estás buscando {{2}}. ¿En qué te podemos ayudar?",
     dailySummaryHour: 20,
     visits: { durationMinutes: 30, businessHourStart: 10, businessHourEnd: 18, businessDays: [0, 1, 2, 3, 4, 5, 6] },
+    tiers: [1, 2, 3, 4].map((n) => ({ key: `tier_${n}`, label: `Tier ${n}`, criteria: "" })),
   };
+}
+
+/** Siempre exactamente 4 tiers (tier_1..tier_4) — conserva label/criteria ya cargados, completa el resto con el default. */
+function normalizeTiers(loaded: TierDefinition[] | undefined): TierDefinition[] {
+  const defaults = defaultSettings().tiers;
+  return defaults.map((d) => {
+    const existing = loaded?.find((t) => t.key === d.key);
+    return existing ? { key: d.key, label: existing.label || d.label, criteria: existing.criteria ?? "" } : d;
+  });
 }
 
 // Completa con valores por defecto cualquier campo que falte en lo cargado
@@ -202,6 +232,7 @@ function normalize(loaded: Partial<AppSettings>): AppSettings {
     tokko: { ...defaults.tokko, ...loaded.tokko },
     communicationStyle: { ...defaults.communicationStyle, ...loaded.communicationStyle },
     visits: { ...defaults.visits, ...visitsLoaded },
+    tiers: normalizeTiers(loaded.tiers),
   };
 }
 

@@ -10,6 +10,7 @@ import { appendToolUsage } from "./toolUsageLog.js";
 import { getAvailableSlots, bookVisit, rescheduleVisit, findMatchingReps } from "../calendar/client.js";
 import { storeIcs } from "../calendar/icsStore.js";
 import { appendStageLog } from "./stageLog.js";
+import { appendTierLog } from "./tierLog.js";
 
 export interface AgentContext {
   customerPhone: string;
@@ -231,6 +232,46 @@ function buildVisitTools(): Anthropic.Tool[] {
   ];
 }
 
+/**
+ * Arma la herramienta classify_contact_tier a partir de los 4 tiers
+ * configurados en /admin/config — igual que buildUpdateStageTool, el
+ * criterio de cada uno es texto libre así que el enum/descripción no puede
+ * ser estático. Solo ofrece los tiers que tengan criterio cargado (un tier
+ * sin criteria todavía no está definido, no tiene sentido que el agente
+ * elija a ciegas).
+ */
+function buildClassifyTierTool(): Anthropic.Tool {
+  const tiers = getSettings().tiers.filter((t) => t.criteria.trim());
+  const enumValues = tiers.map((t) => t.key);
+  const description =
+    tiers.length > 0
+      ? tiers.map((t) => `${t.label}: ${t.criteria}`).join("\n")
+      : "Todavía no hay ningún tier configurado con criterios (ver /admin/config).";
+
+  return {
+    name: "classify_contact_tier",
+    description:
+      "Clasificá al cliente actual en uno de estos tiers según lo que mostró en la charla hasta ahora " +
+      "(presupuesto, urgencia, nivel de definición, etc.):\n" +
+      description +
+      "\nUsala cuando ya tengas señales suficientes para elegir con criterio, no en el primer mensaje. " +
+      "Si cambian las señales más adelante en la misma conversación, podés volver a clasificarlo — " +
+      "gana la última.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tier: {
+          type: "string",
+          ...(enumValues.length > 0 ? { enum: enumValues } : {}),
+          description: "A qué tier corresponde.",
+        },
+        reasoning: { type: "string", description: "Motivo breve, en base a qué de la charla lo clasificaste así." },
+      },
+      required: ["tier", "reasoning"],
+    },
+  };
+}
+
 const STATIC_TOOLS_AFTER_STAGE: Anthropic.Tool[] = [
   {
     name: "save_lead_notes",
@@ -290,6 +331,7 @@ export function getAgentTools(): Anthropic.Tool[] {
     ...STATIC_TOOLS_BEFORE_STAGE,
     ...buildVisitTools(),
     buildUpdateStageTool(),
+    buildClassifyTierTool(),
     ...STATIC_TOOLS_AFTER_STAGE,
     buildEscalateToHumanTool(),
   ];
@@ -627,6 +669,22 @@ export async function executeTool(
       });
       logger.info("agent.stage_logged", { customerPhone: ctx.customerPhone, stage, reason });
       return JSON.stringify({ logged: true, stage });
+    }
+
+    case "classify_contact_tier": {
+      const tier = input.tier as string;
+      const reasoning = (input.reasoning as string).trim();
+      const tierLabel = getSettings().tiers.find((t) => t.key === tier)?.label ?? tier;
+      appendTierLog({
+        ts: Date.now(),
+        phone: ctx.customerPhone,
+        name: ctx.customerName,
+        tierKey: tier,
+        tierLabel,
+        reasoning,
+      });
+      logger.info("agent.tier_classified", { customerPhone: ctx.customerPhone, tier, reasoning });
+      return JSON.stringify({ classified: true, tier });
     }
 
     case "save_lead_notes": {

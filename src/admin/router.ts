@@ -6,10 +6,11 @@ import {
   type TokkoStage,
   type CommunicationStyleOverride,
   type TeamMember,
+  type TierDefinition,
 } from "../settings.js";
 import { initiateConversation } from "../agent/orchestrator.js";
 import { renderConversationsList, renderConversationDetail, renderDailySummaryView } from "./conversationsView.js";
-import { renderContactsList } from "./contactsView.js";
+import { renderContactsList, renderContactDetail } from "./contactsView.js";
 import { renderMetricsView } from "./metricsView.js";
 import { requireAdminAuth, checkPassword, setSessionCookie, clearSessionCookie, getSessionUsername } from "./auth.js";
 import { pageShell as layoutPageShell } from "./layout.js";
@@ -88,6 +89,10 @@ adminRouter.get("/admin/contacts", (_req: Request, res: Response) => {
   res.type("html").send(renderContactsList());
 });
 
+adminRouter.get("/admin/contacts/:phone", (req: Request, res: Response) => {
+  res.type("html").send(renderContactDetail(req.params.phone));
+});
+
 adminRouter.get("/admin/conversations/:phone", (req: Request, res: Response) => {
   renderConversationDetail(req.params.phone)
     .then((html) => res.type("html").send(html))
@@ -160,6 +165,17 @@ adminRouter.post("/admin/config", (req: Request, res: Response) => {
     .map((d) => Number(d))
     .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
 
+  // Siempre exactamente 4 tiers (tier_1..tier_4) — a diferencia de las
+  // etapas/equipo no son una lista libre, así que se arman por índice fijo
+  // en vez de filtrar filas vacías.
+  const tierLabels = toArray(body.tierLabel);
+  const tierCriteria = toArray(body.tierCriteria);
+  const tiers: TierDefinition[] = [1, 2, 3, 4].map((n, i) => ({
+    key: `tier_${n}`,
+    label: (tierLabels[i] ?? "").trim() || `Tier ${n}`,
+    criteria: (tierCriteria[i] ?? "").trim(),
+  }));
+
   const settings: AppSettings = {
     team,
     zonapropLinksFileName: String(body.zonapropLinksFileName ?? "").trim() || "Links Zonaprop",
@@ -182,6 +198,7 @@ adminRouter.post("/admin/config", (req: Request, res: Response) => {
       businessHourEnd: toNumberOrUndefined(body.visitsBusinessHourEnd as string | undefined) ?? 18,
       businessDays,
     },
+    tiers,
   };
 
   saveSettings(settings);
@@ -239,6 +256,14 @@ function renderTeamRow(member: Partial<TeamMember>): string {
                 <input type="text" name="teamEmail" value="${esc(member.email)}" placeholder="mail@ejemplo.com (opcional)">
                 <input type="text" name="teamCalendarId" value="${esc(member.calendarId)}" placeholder="ID de su calendario (opcional)">
                 <input type="text" name="teamReason" value="${esc(member.reason)}" placeholder="Motivo de escalamiento (opcional)">
+              </div>`;
+}
+
+function renderTierRow(tier: TierDefinition): string {
+  return `
+              <div class="tier-row">
+                <input type="text" name="tierLabel" value="${esc(tier.label)}" placeholder="Tier">
+                <textarea name="tierCriteria" placeholder="Qué características debe cumplir un contacto para este tier — texto libre, ej: &quot;Ya definió presupuesto y zona, y pidió coordinar una visita&quot;">${esc(tier.criteria)}</textarea>
               </div>`;
 }
 
@@ -309,7 +334,7 @@ function renderLandingPage(username: string): string {
           <span class="tile-icon">📇</span>
           <span>
             <span class="tile-title">Contactos</span>
-            <span class="tile-sub">Etapas para aplicar a mano en Tokko</span>
+            <span class="tile-sub">Fichas, tier y etapa de cada cliente</span>
           </span>
         </a>
         <a class="tile" href="/admin/daily-summary">
@@ -412,6 +437,8 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   ].join("\n");
 
   const teamRows = [...settings.team.map(renderTeamRow), renderTeamRow({})].join("\n");
+
+  const tierRows = settings.tiers.map(renderTierRow).join("\n");
 
   const DAY_LABELS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
   const businessDayCheckboxes = DAY_LABELS.map(
@@ -531,6 +558,15 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
   }
   .team-row { display: grid; grid-template-columns: 1.1fr 0.9fr 1.1fr 1.1fr 1.1fr; gap: 8px; }
   @media (max-width: 700px) { .team-row, .team-row-header { grid-template-columns: 1fr; } }
+  .tier-rows { display: flex; flex-direction: column; gap: 9px; }
+  .tier-row-header {
+    display: grid; grid-template-columns: 120px 1fr; gap: 8px;
+    font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); padding: 0 2px; font-weight: 600;
+  }
+  .tier-row { display: grid; grid-template-columns: 120px 1fr; gap: 8px; }
+  .tier-row textarea { min-height: 56px; }
+  @media (max-width: 560px) { .tier-row, .tier-row-header { grid-template-columns: 1fr; } }
   .day-checks { display: flex; flex-wrap: wrap; gap: 12px; }
   .day-check { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; cursor: pointer; }
   .actions { position: sticky; bottom: 16px; padding-top: 4px; }
@@ -690,6 +726,25 @@ function renderPage(settings: AppSettings, notices: PageNotices): string {
               ${businessDayCheckboxes}
             </div>
             <div class="hint">El agente solo ofrece y agenda horarios dentro de este horario y estos días. Quién participa de las visitas (y con qué calendario) se carga en la sección "Equipo", de más arriba.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary><span class="icon">🎯</span> Perfilado de clientes<span class="subtitle">tiers</span><span class="chevron">›</span></summary>
+        <div class="section-body">
+          <div class="field">
+            <label>Qué caracteriza a un contacto de cada tier</label>
+            <div class="tier-rows" id="tierRows">
+              <div class="tier-row-header"><span>Tier</span><span>Características (lenguaje natural)</span></div>
+              ${tierRows}
+            </div>
+            <div class="hint">
+              Siempre son 4 tiers fijos — podés renombrarlos (ej. "Tier 1 — Prioridad alta") pero no agregar ni sacar filas.
+              El agente clasifica a cada cliente según lo que va mostrando en la charla (presupuesto, urgencia, nivel de definición, etc.), comparando contra el texto que cargues acá — cuanto más concreto, mejor clasifica.
+              Un tier con el campo vacío queda deshabilitado: el agente no lo tiene entre las opciones.
+              Se ve en cada contacto dentro de <a href="/admin/contacts">Contactos</a> — el agente no le dice nada de esto al cliente, es solo para uso interno del equipo.
+            </div>
           </div>
         </div>
       </details>

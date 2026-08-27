@@ -415,29 +415,54 @@ edita desde el navegador, en caliente, sin tocar la terminal:
 ### Contactos (`/admin/contacts`)
 
 Como Tokko no permite actualizar la etapa de un contacto por API (ver
-sección 1, punto 4), el agente anota localmente qué etapa le corresponde a
-cada cliente según cómo viene la charla — no lo escribe en Tokko, solo lo
-registra. Esta pantalla lista a todos los que escribieron, una tarjeta por
-contacto con:
+sección 1, punto 4), el agente anota localmente qué etapa (y qué tier, ver
+"Perfilado de clientes" más abajo) le corresponde a cada cliente según
+cómo viene la charla — no lo escribe en Tokko, solo lo registra.
 
-- **Nombre** (el que llegó por WhatsApp) y **etapa** actual anotada (si
-  hay una).
-- **Teléfono** y **email** — el email solo aparece si el cliente lo
-  escribió en algún mensaje (no hay otra fuente: Tokko no expone el
-  contacto por teléfono, ver sección 1). Si nunca lo mandó, dice "Sin
-  datos".
-- **Actividad**: cantidad de mensajes y rango de fechas de la charla.
-- **Preguntó por**: emprendimientos y zonas que mencionó durante la
-  charla (se arma solo, a partir de las búsquedas que hizo el agente).
-- Un link **"Ver conversación completa"** que lleva al detalle completo
-  de esa charla (la misma vista de "Ver conversaciones").
-
-Es la lista para que alguien del equipo la revise de tanto en tanto y
-aplique cada cambio de etapa a mano en la cuenta de Tokko. Arriba hay un
+**Lista** (`/admin/contacts`): una fila compacta por contacto — nombre,
+teléfono, y los badges de tier/etapa si hay alguno anotado. Arriba hay un
 buscador que filtra al toque (sin recargar la página) por nombre,
 apellido, teléfono, email, propiedad/emprendimiento consultado o etapa —
 alcanza con que el texto que escribas aparezca en cualquiera de esos
-campos de la tarjeta.
+datos del contacto. Tocando una fila se abre su ficha.
+
+**Ficha de contacto** (`/admin/contacts/<teléfono>`), pensada al estilo de
+la ficha de un contacto en Tokko (avatar, nombre, mail, teléfono, estado):
+
+- **Nombre** (el que llegó por WhatsApp), **tier** y **etapa** actuales
+  anotados (si hay).
+- **Email** — solo aparece si el cliente lo escribió en algún mensaje (no
+  hay otra fuente: Tokko no expone el contacto por teléfono, ver sección
+  1). Si nunca lo mandó, dice "Sin datos".
+- **Teléfono / WhatsApp**.
+- **Actividad**: cantidad de mensajes y rango de fechas de la charla.
+- **Preguntó por**: emprendimientos y zonas que mencionó durante la
+  charla (se arma solo, a partir de las búsquedas que hizo el agente).
+- El motivo del tier y de la etapa, si el agente dio uno.
+- Un link **"Ver conversación completa"** que lleva al detalle completo
+  de esa charla (la misma vista de "Ver conversaciones").
+
+Es la pantalla para que alguien del equipo revise cada contacto de tanto
+en tanto y aplique a mano en Tokko lo que corresponda (cambiar la etapa,
+priorizar según el tier, etc.).
+
+### Perfilado de clientes (`/admin/config` → "Perfilado de clientes")
+
+El agente también clasifica a cada cliente en uno de **4 tiers fijos**
+(Tier 1 a Tier 4) según cómo viene la charla — presupuesto, urgencia,
+nivel de definición, lo que sea relevante para tu negocio. A diferencia de
+las etapas de Tokko, acá no se pueden agregar ni sacar filas, siempre son
+4: lo único que se configura es el **nombre** de cada tier (podés
+renombrarlo, ej. "Tier 1 — Prioridad alta") y sus **características en
+lenguaje natural** — un texto libre que describe qué tiene que mostrar un
+cliente para caer en ese tier (ej. "Ya definió presupuesto y zona
+concretos, y pidió coordinar una visita"). Cuanto más concreto el texto,
+mejor clasifica el agente. Un tier con el campo de características vacío
+queda deshabilitado — el agente no lo tiene entre las opciones.
+
+El agente nunca le menciona esto al cliente ni en la charla ni de ninguna
+otra forma — es un dato puramente interno, que se ve en la ficha de cada
+contacto en `/admin/contacts`.
 
 ### Métricas (`/admin/metrics`)
 
