@@ -230,8 +230,13 @@ const UNIT_CODE_REGEX = /(\d+)\s*°?\s*([a-zA-Z])$/;
 //    "piso + letra" (ver UNIT_CODE_REGEX, cubre "4F", "4 F", "4° F"...),
 //    se busca ese mismo piso+letra en el texto, sin importar cómo esté
 //    escrito el espacio/símbolo de grado en ninguno de los dos lados.
-// 2. Si no, se prueba con la última palabra suelta del nombre (para
-//    códigos que no siguen ese patrón, ej. "PH", "Freire").
+// 2. Si no, se prueba con la última palabra suelta del nombre — pero SOLO
+//    si tiene algún número (ej. "3B", "PH2"): una entrada como "LA
+//    ARBOLEDA Emprendimiento" termina en una palabra genérica
+//    ("Emprendimiento"), y esa sí puede aparecer sola en la descripción de
+//    CUALQUIER unidad del proyecto ("esta unidad forma parte del
+//    emprendimiento...") — sin el filtro de que tenga un número, esa
+//    entrada terminaba matcheando con todas las unidades por igual.
 function matches(candidateName: string, query: string): boolean {
   const a = candidateName.toLowerCase();
   const b = query.toLowerCase();
@@ -244,7 +249,7 @@ function matches(candidateName: string, query: string): boolean {
   }
 
   const lastToken = a.split(/\s+/).pop();
-  if (lastToken && lastToken.length >= 2) {
+  if (lastToken && lastToken.length >= 2 && /\d/.test(lastToken)) {
     return new RegExp(`\\b${escapeForRegExp(lastToken)}\\b`, "i").test(b);
   }
   return false;

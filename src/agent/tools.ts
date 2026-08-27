@@ -441,6 +441,10 @@ export async function executeTool(
           url: await resolveListingUrl([p.publication_title, p.address, p.description], p.public_url),
         })),
       );
+      logger.info(
+        "tokko.search_properties_urls",
+        { urls: summaries.map((s) => ({ id: s.id, url: s.url })) },
+      );
       return JSON.stringify({
         properties: summaries,
         // exhausted=true: shown_count es el total real. exhausted=false:
