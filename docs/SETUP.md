@@ -419,12 +419,71 @@ también el apellido en el campo "Nombre" de la sección "Equipo" (ej.
 más de uno que coincide, el agente no elige por
 su cuenta: le pide que aclare cuál.
 
-## 6. Claude (Anthropic)
+## 6. Mail (opcional)
+
+El agente puede además leer y contestar mails desde una casilla de Gmail o
+Google Workspace — misma conversación, mismo historial, mismas
+herramientas (Tokko, Drive, Calendar) que por WhatsApp. Es opcional: sin
+`MAIL_ADDRESS` configurado, este canal queda deshabilitado y todo sigue
+funcionando exactamente igual solo por WhatsApp.
+
+**Requiere Google Workspace** (no una cuenta de Gmail personal/gratuita) —
+la casilla tiene que ser de un dominio propio administrado desde
+`admin.google.com`, y necesitás (o alguien del equipo con) acceso de
+administrador para el paso 3.
+
+1. Elegí qué casilla va a usar el agente. Puede ser una compartida que ya
+   uses hoy (ej. `info@tudominio.com`) o una nueva dedicada — con una
+   compartida, tené en cuenta que el agente contesta cualquier mail nuevo
+   sin leer que no sea de alguien del equipo (ver punto 5), así que si
+   alguien del equipo está por contestar algo a mano, mejor que lo haga
+   rápido para que no se le adelante el agente.
+2. Poné esa dirección en `.env` → `MAIL_ADDRESS`.
+3. **Habilitá "domain-wide delegation"** para la cuenta de servicio que ya
+   tenés de Drive/Calendar (`GOOGLE_SERVICE_ACCOUNT_FILE`) — es lo que le
+   permite actuar como esa casilla sin que nadie tenga que loguearse a
+   mano:
+   1. Andá a [Google Cloud Console](https://console.cloud.google.com) →
+      tu proyecto → la cuenta de servicio → copiá su **Client ID**
+      (numérico, distinto del email `...@....iam.gserviceaccount.com`).
+   2. Andá a [admin.google.com](https://admin.google.com) → **Seguridad**
+      → **Controles de API** → **Delegación a nivel de dominio** → **Añadir
+      nuevo**.
+   3. Pegá el Client ID, y en "Ámbitos de OAuth" pegá, separados por coma:
+      ```
+      https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/gmail.modify
+      ```
+   4. Guardá. Puede tardar unos minutos en propagarse.
+4. Reiniciá el servidor. Si todo quedó bien, al mandarle un mail de prueba
+   a esa casilla desde otra cuenta, el agente debería contestar en un
+   plazo de `MAIL_POLL_INTERVAL_SECONDS` (60 por defecto).
+5. **Cómo distingue un cliente de un mail interno**: cualquier mail nuevo
+   sin leer en la bandeja de entrada que no sea de la propia casilla se
+   trata como una consulta — excepto que venga de una dirección cargada en
+   la sección "Equipo" de `/admin/config` (ahí no se toca, para no
+   contestarle solo a alguien del equipo escribiendo a esa casilla). Por
+   eso conviene tener cargado el mail de cada persona del equipo en esa
+   sección si comparten la casilla con el agente.
+6. **Qué hace y qué no, por ahora**: contesta, busca propiedades/
+   emprendimientos, manda archivos de Drive y el `.ics` de una visita como
+   adjunto real (mejor que por WhatsApp, sin las restricciones de tipo de
+   archivo que tiene ahí), agenda/reprograma visitas, escala a un humano
+   (que sigue recibiendo el aviso por WhatsApp, como siempre) y anota
+   etapa/tier igual que por WhatsApp. Lo que **no** hace todavía: iniciar
+   una conversación de mail él mismo (la función "Contactar a un cliente
+   ahora" de `/admin/contact` sigue siendo solo por WhatsApp).
+7. **Revisa la casilla, no notificaciones en tiempo real**: cada
+   `MAIL_POLL_INTERVAL_SECONDS` (no al instante) — alcanza para el volumen
+   de una inmobiliaria; si en algún momento hace falta que sea
+   instantáneo, hay que pasar a notificaciones push de Gmail (necesita
+   Google Cloud Pub/Sub aparte, no está armado).
+
+## 7. Claude (Anthropic)
 
 1. Conseguí una API key en [console.anthropic.com](https://console.anthropic.com)
    → `ANTHROPIC_API_KEY`.
 
-## 7. Panel de administración (`/admin`)
+## 8. Panel de administración (`/admin`)
 
 Todo lo que antes había que editar a mano en `.env` (y reiniciar el
 servidor) para cambiar un número de teléfono o un ID de Tokko ahora se

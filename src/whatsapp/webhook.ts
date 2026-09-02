@@ -7,6 +7,8 @@ import { isHumanEscalationNumber, resolveHumanReply } from "../agent/escalation.
 import { appendAssistantMessage } from "../agent/sessionStore.js";
 import { appendConversationLog, getLastKnownName } from "../agent/conversationLog.js";
 import { sendText, sendDocumentByLink, withTwilioMediaAuth } from "./client.js";
+import { isEmailChannelId } from "../mail/client.js";
+import { sendFileToCustomer } from "../agent/channelSend.js";
 
 export const webhookRouter = Router();
 
@@ -164,18 +166,27 @@ async function handleHumanReply(
   }
 
   if (mediaUrl) {
-    // Reenvía el archivo real como adjunto de WhatsApp (no como texto) — el
-    // MediaUrl que nos manda Twilio para un mensaje entrante también sirve
-    // como mediaUrl saliente dentro de la misma cuenta. Si no escribió
+    // Reenvía el archivo real como adjunto (no como texto). Si no escribió
     // nada, igual mandamos un texto por defecto — nunca un archivo pelado
     // sin ningún contexto.
     const caption = text && !looksLikeFilename(text) ? text : "Acá tenés lo que me pediste.";
-    await sendDocumentByLink(
-      pending.customerPhone,
-      withTwilioMediaAuth(mediaUrl),
-      guessFilename(mediaContentType),
-      caption,
-    );
+    const filename = guessFilename(mediaContentType);
+    if (isEmailChannelId(pending.customerPhone)) {
+      // El MediaUrl que manda Twilio para un mensaje entrante requiere las
+      // credenciales de la cuenta para descargarse (ver withTwilioMediaAuth)
+      // — para adjuntarlo a un mail hace falta bajarlo primero nosotros,
+      // WhatsApp sí lo puede resolver directo desde su propia URL.
+      const res = await fetch(withTwilioMediaAuth(mediaUrl));
+      const content = Buffer.from(await res.arrayBuffer());
+      await sendFileToCustomer(pending.customerPhone, caption, {
+        filename,
+        url: "",
+        mimeType: mediaContentType || "application/octet-stream",
+        content,
+      });
+    } else {
+      await sendDocumentByLink(pending.customerPhone, withTwilioMediaAuth(mediaUrl), filename, caption);
+    }
     appendAssistantMessage(pending.customerPhone, caption);
     appendConversationLog({
       ts: Date.now(),

@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { tokkoClient } from "../tokko/client.js";
-import { sendText, sendTemplate } from "../whatsapp/client.js";
+import { sendTemplate } from "../whatsapp/client.js";
 import { getSettings } from "../settings.js";
 import { getAgentTools, executeTool, type AgentContext } from "./tools.js";
 import { escalateToHumans } from "./escalation.js";
@@ -14,16 +14,23 @@ import {
   markInquirySubmitted,
 } from "./sessionStore.js";
 import { appendConversationLog, getEntriesForPhone, getLastKnownName } from "./conversationLog.js";
+import { isEmailChannelId, emailAddressFromId } from "../mail/client.js";
+import { sendReplyToCustomer as sendReply } from "./channelSend.js";
 
 const anthropic = new Anthropic(); // toma ANTHROPIC_API_KEY del entorno
 
-const SYSTEM_PROMPT_BASE = `Sos el asistente de WhatsApp de una inmobiliaria. Respondés
-consultas usando exclusivamente datos reales de Tokko (herramientas
+const SYSTEM_PROMPT_BASE = `Sos el asistente de una inmobiliaria, y atendés
+consultas tanto por WhatsApp como por mail (el mismo vos en los dos
+canales, con la misma memoria de cada conversación) — no hace falta que
+sepas por cuál te escribió cada cliente, el sistema ya se encarga de
+mandar la respuesta por el canal que corresponde. Respondés consultas
+usando exclusivamente datos reales de Tokko (herramientas
 search_properties / search_developments / get_property_details) — nunca
 inventes precios, direcciones ni características de una propiedad.
 
-Estilo: español rioplatense, tono cordial y directo, mensajes cortos aptos
-para WhatsApp (sin markdown de títulos, listas simples si hace falta).
+Estilo: español rioplatense, tono cordial y directo, mensajes cortos (sin
+markdown de títulos, listas simples si hace falta) — funciona bien tanto
+para un WhatsApp como para el cuerpo de un mail.
 
 Cuándo usar cada herramienta:
 - search_properties / get_property_details: antes de responder cualquier
@@ -209,16 +216,32 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
     // nunca debe cortar la respuesta al cliente por esto.
     let contactId: number | null = null;
     try {
-      const existing = await tokkoClient.findContactByPhone(from);
-      if (existing) {
-        contactId = existing.id;
-      } else if (!hasSubmittedInquiry(from)) {
-        // Contacto nuevo: manda la consulta a Tokko (queda pendiente de
-        // aprobación manual — no hay forma de saltear ese paso por API,
-        // ver src/tokko/client.ts). Solo una vez por número mientras el
-        // proceso siga corriendo, para no inundar la bandeja de Pendientes.
-        await tokkoClient.submitInquiry({ name, phone: from, text, tags: ["WhatsApp"] });
-        markInquirySubmitted(from);
+      if (isEmailChannelId(from)) {
+        // Tokko identifica contactos por teléfono, no por mail — no hay
+        // nada que buscar acá. Igual se manda la Consulta con el mail en su
+        // propio campo, para que quede registrada como cualquier otra.
+        if (!hasSubmittedInquiry(from)) {
+          await tokkoClient.submitInquiry({
+            name,
+            phone: "",
+            email: emailAddressFromId(from),
+            text,
+            tags: ["Mail"],
+          });
+          markInquirySubmitted(from);
+        }
+      } else {
+        const existing = await tokkoClient.findContactByPhone(from);
+        if (existing) {
+          contactId = existing.id;
+        } else if (!hasSubmittedInquiry(from)) {
+          // Contacto nuevo: manda la consulta a Tokko (queda pendiente de
+          // aprobación manual — no hay forma de saltear ese paso por API,
+          // ver src/tokko/client.ts). Solo una vez por número mientras el
+          // proceso siga corriendo, para no inundar la bandeja de Pendientes.
+          await tokkoClient.submitInquiry({ name, phone: from, text, tags: ["WhatsApp"] });
+          markInquirySubmitted(from);
+        }
       }
     } catch (error) {
       logger.warn("tokko.crm_sync_failed", { from, error: String(error) });
@@ -244,7 +267,7 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
     const replyText = await runAgentLoop(messages, ctx, text);
 
     if (replyText) {
-      await sendText(from, replyText);
+      await sendReply(from, replyText);
       appendConversationLog({ ts: Date.now(), phone: from, name, role: "assistant", text: replyText });
     }
     saveHistory(from, messages);
@@ -256,7 +279,7 @@ export async function handleIncomingMessage(msg: IncomingMessage): Promise<void>
       question: text,
       reason: `Falla técnica procesando el mensaje: ${String(error)}`,
     }).catch((e) => logger.warn("agent.escalation_failed", { error: String(e) }));
-    await sendText(
+    await sendReply(
       from,
       "Perdón, tuvimos un problema técnico procesando tu consulta. Ya te contactamos a la brevedad.",
     ).catch(() => {});
@@ -368,7 +391,7 @@ export async function relayHumanReply(customerPhone: string, humanText: string):
     return;
   }
 
-  await sendText(customerPhone, replyText);
+  await sendReply(customerPhone, replyText);
   appendAssistantMessage(customerPhone, replyText);
   appendConversationLog({
     ts: Date.now(),

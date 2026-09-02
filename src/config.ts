@@ -52,6 +52,19 @@ const envSchema = z.object({
 
   GOOGLE_SERVICE_ACCOUNT_FILE: z.string().min(1, "falta GOOGLE_SERVICE_ACCOUNT_FILE"),
 
+  // Canal de mail (opcional — sin esto, el agente sigue funcionando solo
+  // por WhatsApp). Casilla de Gmail/Google Workspace que va a leer y
+  // contestar el agente, ej. "info@ismopropiedades.com". Requiere que la
+  // cuenta de servicio (GOOGLE_SERVICE_ACCOUNT_FILE) tenga "domain-wide
+  // delegation" habilitada en el admin de Workspace para poder actuar como
+  // esta casilla — ver docs/SETUP.md.
+  MAIL_ADDRESS: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z.string().email().optional(),
+  ),
+  // Cada cuánto revisa la casilla en busca de mails nuevos, en segundos.
+  MAIL_POLL_INTERVAL_SECONDS: z.coerce.number().default(60),
+
   ANTHROPIC_API_KEY: z.string().optional(),
 
   // Número(s) de WhatsApp de agentes humanos a los que se les avisa cuando

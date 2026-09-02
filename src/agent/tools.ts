@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { tokkoClient } from "../tokko/client.js";
-import { findFilesByName, findZonapropLink, getZonapropLinks } from "../drive/client.js";
-import { sendDocumentByLink, sendText } from "../whatsapp/client.js";
+import { findFilesByName, findZonapropLink, getZonapropLinks, downloadFileBytes } from "../drive/client.js";
+import { sendText } from "../whatsapp/client.js";
 import { logger } from "../logger.js";
 import { config } from "../config.js";
 import { getSettings } from "../settings.js";
@@ -11,6 +11,8 @@ import { getAvailableSlots, bookVisit, rescheduleVisit, findMatchingReps } from 
 import { storeIcs } from "../calendar/icsStore.js";
 import { appendStageLog } from "./stageLog.js";
 import { appendTierLog } from "./tierLog.js";
+import { isEmailChannelId, displayContact } from "../mail/client.js";
+import { sendFileToCustomer } from "./channelSend.js";
 
 /**
  * Prioriza el link de Zonaprop (planilla en Drive) sobre el link propio de
@@ -183,7 +185,8 @@ const STATIC_TOOLS_BEFORE_STAGE: Anthropic.Tool[] = [
     name: "share_file",
     description:
       "Busca un archivo en Google Drive (folletos, planos, fichas, listados) por palabras clave " +
-      "y lo envía directamente como adjunto por WhatsApp al cliente actual.",
+      "y lo envía directamente como adjunto al cliente actual, por el mismo canal en el que está " +
+      "escribiendo (WhatsApp o mail).",
     input_schema: {
       type: "object",
       properties: {
@@ -236,8 +239,9 @@ function buildVisitTools(): Anthropic.Tool[] {
         "Agenda una visita o reunión con el cliente actual en el calendario de un comercial libre en " +
         "ese horario, en un horario que ya confirmaste como libre con check_visit_availability. No la " +
         "uses sin haber confirmado antes la disponibilidad, ni sin que el cliente haya confirmado el " +
-        "horario. Al agendar, el cliente recibe automáticamente un archivo de calendario por WhatsApp " +
-        "para agregar el evento a su calendario — no hace falta pedirle ningún dato para eso.",
+        "horario. Al agendar, el cliente recibe automáticamente un archivo de calendario (por WhatsApp " +
+        "o mail, según por dónde esté escribiendo) para agregar el evento a su calendario — no hace " +
+        "falta pedirle ningún dato para eso.",
       input_schema: {
         type: "object",
         properties: {
@@ -525,7 +529,7 @@ export async function executeTool(
         return escalateToHumans({
           customerPhone: ctx.customerPhone,
           customerName: ctx.customerName,
-          question: `Pide el archivo "${query}" por WhatsApp — ¿se lo podés mandar vos directamente?`,
+          question: `Pide el archivo "${query}" — ¿se lo podés mandar vos directamente?`,
           reason,
         }).catch((error) => {
           logger.warn("agent.escalation_failed", { error: String(error) });
@@ -556,7 +560,22 @@ export async function executeTool(
       }
 
       const file = files[0];
-      await sendDocumentByLink(ctx.customerPhone, file.downloadUrl, file.name);
+      // Por mail hace falta el archivo en bytes para adjuntarlo de verdad —
+      // por WhatsApp alcanza con el link (ver channelSend.ts). Si es un
+      // Doc/Sheet nativo de Google, downloadFileBytes no puede bajarlo tal
+      // cual y cae solo a mandar el link.
+      const content = isEmailChannelId(ctx.customerPhone)
+        ? await downloadFileBytes(file.id, file.mimeType).catch((error) => {
+            logger.warn("drive.download_bytes_failed", { fileId: file.id, error: String(error) });
+            return null;
+          })
+        : undefined;
+      await sendFileToCustomer(ctx.customerPhone, `Te paso "${file.name}".`, {
+        filename: file.name,
+        url: file.downloadUrl,
+        mimeType: file.mimeType,
+        content: content ?? undefined,
+      });
       return JSON.stringify({ sent: true, file: file.name });
     }
 
@@ -610,7 +629,7 @@ export async function executeTool(
           dateStr: date,
           time,
           summary: `Visita: ${ctx.customerName}`,
-          description: `Cliente: ${ctx.customerName} (${ctx.customerPhone})${notes ? `\n${notes}` : ""}`,
+          description: `Cliente: ${ctx.customerName} (${displayContact(ctx.customerPhone)})${notes ? `\n${notes}` : ""}`,
           repName,
         });
         logger.info("agent.visit_booked", {
@@ -623,24 +642,35 @@ export async function executeTool(
 
         // Ambos avisos son best-effort: si fallan, la visita ya quedó
         // agendada en el calendario igual — no hace falta que le pese al
-        // cliente ni al comercial.
+        // cliente ni al comercial. Por mail el .ics va directo como adjunto
+        // (no hace falta PUBLIC_WEBHOOK_URL ni la vuelta del text/plain que
+        // exige WhatsApp — el mail soporta text/calendar de forma nativa).
         let icsSent = false;
-        if (config.PUBLIC_WEBHOOK_URL) {
-          try {
-            const icsId = storeIcs(result.icsContent);
-            const icsUrl = `${new URL(config.PUBLIC_WEBHOOK_URL).origin}/ics/${icsId}`;
-            logger.info("agent.visit_ics_url", { icsUrl });
-            await sendDocumentByLink(ctx.customerPhone, icsUrl, "visita.ics", "📅 Acá tenés el evento para agregarlo a tu calendario.");
+        try {
+          const isEmail = isEmailChannelId(ctx.customerPhone);
+          if (isEmail || config.PUBLIC_WEBHOOK_URL) {
+            let icsUrl = "";
+            if (!isEmail) {
+              const icsId = storeIcs(result.icsContent);
+              icsUrl = `${new URL(config.PUBLIC_WEBHOOK_URL!).origin}/ics/${icsId}`;
+              logger.info("agent.visit_ics_url", { icsUrl });
+            }
+            await sendFileToCustomer(ctx.customerPhone, "📅 Acá tenés el evento para agregarlo a tu calendario.", {
+              filename: "visita.ics",
+              url: icsUrl,
+              mimeType: "text/calendar",
+              content: isEmail ? Buffer.from(result.icsContent, "utf-8") : undefined,
+            });
             icsSent = true;
-          } catch (error) {
-            logger.warn("agent.visit_ics_send_failed", { customerPhone: ctx.customerPhone, error: String(error) });
           }
+        } catch (error) {
+          logger.warn("agent.visit_ics_send_failed", { customerPhone: ctx.customerPhone, error: String(error) });
         }
 
         if (result.repPhone) {
           const notifyText =
             `📅 Nueva visita agendada\n` +
-            `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
+            `Cliente: ${ctx.customerName} (${displayContact(ctx.customerPhone)})\n` +
             `Cuándo: ${date} ${time}` +
             (notes ? `\nDetalle: ${notes}` : "");
           sendText(result.repPhone, notifyText).catch((error) => {
@@ -672,27 +702,31 @@ export async function executeTool(
         });
 
         let icsSent = false;
-        if (config.PUBLIC_WEBHOOK_URL) {
-          try {
-            const icsId = storeIcs(result.icsContent);
-            const icsUrl = `${new URL(config.PUBLIC_WEBHOOK_URL).origin}/ics/${icsId}`;
-            logger.info("agent.visit_ics_url", { icsUrl });
-            await sendDocumentByLink(
-              ctx.customerPhone,
-              icsUrl,
-              "visita.ics",
-              "📅 Che, actualizamos el evento con el nuevo horario.",
-            );
+        try {
+          const isEmail = isEmailChannelId(ctx.customerPhone);
+          if (isEmail || config.PUBLIC_WEBHOOK_URL) {
+            let icsUrl = "";
+            if (!isEmail) {
+              const icsId = storeIcs(result.icsContent);
+              icsUrl = `${new URL(config.PUBLIC_WEBHOOK_URL!).origin}/ics/${icsId}`;
+              logger.info("agent.visit_ics_url", { icsUrl });
+            }
+            await sendFileToCustomer(ctx.customerPhone, "📅 Che, actualizamos el evento con el nuevo horario.", {
+              filename: "visita.ics",
+              url: icsUrl,
+              mimeType: "text/calendar",
+              content: isEmail ? Buffer.from(result.icsContent, "utf-8") : undefined,
+            });
             icsSent = true;
-          } catch (error) {
-            logger.warn("agent.visit_ics_send_failed", { customerPhone: ctx.customerPhone, error: String(error) });
           }
+        } catch (error) {
+          logger.warn("agent.visit_ics_send_failed", { customerPhone: ctx.customerPhone, error: String(error) });
         }
 
         if (result.repPhone) {
           const notifyText =
             `🔄 Visita reprogramada\n` +
-            `Cliente: ${ctx.customerName} (${ctx.customerPhone})\n` +
+            `Cliente: ${ctx.customerName} (${displayContact(ctx.customerPhone)})\n` +
             `Antes: ${result.previousDateStr} ${result.previousTime}\n` +
             `Ahora: ${date} ${time}`;
           sendText(result.repPhone, notifyText).catch((error) => {

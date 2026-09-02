@@ -1,5 +1,6 @@
 import { sendText } from "../whatsapp/client.js";
 import { getSettings } from "../settings.js";
+import { displayContact } from "../mail/client.js";
 
 interface PendingEscalation {
   customerPhone: string;
@@ -60,7 +61,7 @@ export async function escalateToHumans(input: {
 
   const alertText =
     `🔔 Consulta necesita revisión humana\n` +
-    `Cliente: ${input.customerName} (${input.customerPhone})\n` +
+    `Cliente: ${input.customerName} (${displayContact(input.customerPhone)})\n` +
     `Pregunta: ${input.question}` +
     (input.reason ? `\nMotivo: ${input.reason}` : "") +
     `\n\nRespondé citando este mensaje (mantené presionado → Responder) y tu respuesta se le manda directo al cliente.`;

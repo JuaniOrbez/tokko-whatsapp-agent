@@ -92,6 +92,20 @@ export async function findFilesByName(query: string, limit = 5): Promise<DriveFi
   return results;
 }
 
+/**
+ * Baja el contenido binario real de un archivo (para adjuntarlo a un mail,
+ * ver mail/client.ts) — solo sirve para archivos subidos tal cual (PDF,
+ * imágenes, etc.), no para Docs/Sheets/Slides nativos de Google (esos no
+ * tienen un "binario" propio, habría que exportarlos primero a algún
+ * formato). Devuelve null en ese caso — el llamador cae entonces a mandar
+ * el link en vez del archivo.
+ */
+export async function downloadFileBytes(fileId: string, mimeType?: string): Promise<Buffer | null> {
+  if (mimeType?.startsWith("application/vnd.google-apps")) return null;
+  const res = await drive.files.get({ fileId, alt: "media" }, { responseType: "arraybuffer" });
+  return Buffer.from(res.data as ArrayBuffer);
+}
+
 export interface ZonapropLinkEntry {
   name: string;
   link: string;

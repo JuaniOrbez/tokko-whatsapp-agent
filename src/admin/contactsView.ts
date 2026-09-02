@@ -2,6 +2,7 @@ import { getEntriesForPhone, listRecentConversations, type ConversationLogEntry 
 import { getLatestStageByPhone, type StageLogEntry } from "../agent/stageLog.js";
 import { getLatestTierByPhone, type TierLogEntry } from "../agent/tierLog.js";
 import { valuesByPhone } from "../agent/toolUsageLog.js";
+import { isEmailChannelId, emailAddressFromId, displayContact } from "../mail/client.js";
 import { esc, pageShell as pageShellBase } from "./layout.js";
 
 function pageShell(title: string, body: string, backHref = "/admin/contacts"): string {
@@ -62,7 +63,7 @@ export function renderContactsList(): string {
       // recalcula acá (barato: listas chicas) para que el buscador también
       // encuentre por email desde esta pantalla, sin tener que entrar al
       // detalle de cada contacto.
-      const email = findEmail(getEntriesForPhone(c.phone));
+      const email = isEmailChannelId(c.phone) ? emailAddressFromId(c.phone) : findEmail(getEntriesForPhone(c.phone));
 
       const searchBlob = [c.name, c.phone, email, ...interests, stage?.stageLabel, tier?.tierLabel]
         .filter(Boolean)
@@ -79,7 +80,7 @@ export function renderContactsList(): string {
               ${stage ? `<span class="badge stage-badge">${esc(stage.stageLabel)}</span>` : ""}
             </span>
           </span>
-          <span class="meta">${esc(c.phone)}</span>
+          <span class="meta">${esc(displayContact(c.phone))}</span>
         </a>
       </div>`;
     })
@@ -147,8 +148,13 @@ export function renderContactDetail(phone: string): string {
   const name = entries[entries.length - 1].name;
   const stage: StageLogEntry | undefined = getLatestStageByPhone().get(phone);
   const tier: TierLogEntry | undefined = getLatestTierByPhone().get(phone);
-  const email = findEmail(entries);
+  const isEmail = isEmailChannelId(phone);
+  const email = isEmail ? emailAddressFromId(phone) : findEmail(entries);
   const interests = [...(valuesByPhone("development").get(phone) ?? []), ...(valuesByPhone("location").get(phone) ?? [])];
+
+  const contactRows = isEmail
+    ? fichaRow("✉️", esc(email!))
+    : `${fichaRow("✉️", email ? esc(email) : '<span class="meta">Sin datos</span>')}${fichaRow("📞", esc(phone))}${fichaRow("💬", esc(phone))}`;
 
   const body = `
     <div class="ficha-card">
@@ -159,9 +165,7 @@ export function renderContactDetail(phone: string): string {
         ${stage ? `<span class="badge stage-badge">${esc(stage.stageLabel)}</span>` : `<span class="meta">Sin etapa anotada</span>`}
       </div>
       <div class="ficha-contact-rows">
-        ${fichaRow("✉️", email ? esc(email) : '<span class="meta">Sin datos</span>')}
-        ${fichaRow("📞", esc(phone))}
-        ${fichaRow("💬", esc(phone))}
+        ${contactRows}
       </div>
     </div>
 

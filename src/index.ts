@@ -5,6 +5,7 @@ import { webhookRouter } from "./whatsapp/webhook.js";
 import { adminRouter } from "./admin/router.js";
 import { icsRouter } from "./calendar/icsRouter.js";
 import { startScheduler } from "./scheduler.js";
+import { startMailPoller } from "./mail/poller.js";
 
 const app = express();
 
@@ -22,4 +23,5 @@ app.use(icsRouter);
 app.listen(config.PORT, () => {
   logger.info("server.started", { port: config.PORT });
   startScheduler();
+  startMailPoller();
 });

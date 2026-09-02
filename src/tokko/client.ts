@@ -234,6 +234,11 @@ class TokkoClient {
   async submitInquiry(input: {
     name: string;
     phone: string;
+    // Opcional — sin confirmar en vivo que /webcontact/ lo use (no hicimos
+    // ninguna consulta que llegara por mail todavía), pero es un campo
+    // estándar en formularios de contacto tipo este y no debería romper
+    // nada si Tokko lo ignora.
+    email?: string;
     text: string;
     tags?: string[];
   }): Promise<void> {
@@ -241,6 +246,7 @@ class TokkoClient {
       body: {
         name: input.name,
         phone: input.phone,
+        ...(input.email ? { email: input.email } : {}),
         text: input.text,
         tags: input.tags ?? ["WhatsApp"],
       },

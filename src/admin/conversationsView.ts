@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getEntriesForPhone, listRecentConversations } from "../agent/conversationLog.js";
+import { displayContact } from "../mail/client.js";
 import { buildDailySummary } from "../agent/dailySummary.js";
 import { logger } from "../logger.js";
 import { esc, pageShell as pageShellBase } from "./layout.js";
@@ -57,7 +58,7 @@ export function renderConversationsList(): string {
       (c) => `
       <div class="card">
         <a href="/admin/conversations/${encodeURIComponent(c.phone)}">
-          <span>${esc(c.name)} · ${esc(c.phone)}</span>
+          <span>${esc(c.name)} · ${esc(displayContact(c.phone))}</span>
           <span class="meta">${esc(new Date(c.lastTs).toLocaleString("es-AR"))}</span>
         </a>
       </div>`,
@@ -114,7 +115,7 @@ export async function renderConversationDetail(phone: string): Promise<string> {
     </div>
     <div class="msg-log">${messagesHtml}</div>
   `;
-  return pageShell(`${entries[0].name} · ${phone}`, body, { wide: true });
+  return pageShell(`${entries[0].name} · ${displayContact(phone)}`, body, { wide: true });
 }
 
 export async function renderDailySummaryView(): Promise<string> {
